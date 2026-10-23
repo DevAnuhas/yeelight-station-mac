@@ -1,0 +1,70 @@
+{
+  "asset": "assets/app-icon.png",
+  "use_case": "logo-brand",
+  "tool": "image_gen.imagegen",
+  "mode": "built-in",
+  "selected_generated_image_path": "/Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-722a2188-d779-4d95-8b4c-e849d9e2d0ec.png",
+  "selected_generation": 1,
+  "selected_image_copied_without_modification": true,
+  "metadata": {
+    "format": "PNG",
+    "actual_pixel_width": 1254,
+    "actual_pixel_height": 1254,
+    "requested_pixel_width": 1024,
+    "requested_pixel_height": 1024,
+    "has_alpha": true,
+    "corner_alpha_values": [
+      0,
+      0,
+      0,
+      0
+    ],
+    "bottom_margin_check": {
+      "region": "y >= 1190",
+      "maximum_alpha": 1,
+      "alpha_scale_maximum": 255
+    },
+    "note": "Built-in tool returned 1254×1254 despite the 1024×1024 prompt. The original generated PNG and alpha were preserved unchanged."
+  },
+  "generations": [
+    {
+      "id": 1,
+      "selected": true,
+      "arguments": {
+        "prompt": "Use case: logo-brand\nAsset type: Final 1024 × 1024 PNG master for a native macOS Dock app icon, Yeelight Station, an independent ambient RGB lighting controller.\nPrimary request: Create ONE original premium colorful macOS app icon. A bold horizontal light-bar capsule casts a broad saturated RGB wash downward inside a dimensional rounded-square tile. The silhouette must remain immediately identifiable at 16 px and 32 px.\nScene/backdrop: A true transparent canvas outside the icon tile. The tile itself is opaque bright cobalt blue transitioning into rich violet, with standard native macOS rounded-square corners. The tile fills approximately 90 percent of the square canvas, centered with even transparent margins.\nSubject and composition: One large, thick white/silver horizontal light-bar capsule centered across the upper third of the tile, roughly 60 percent of the entire canvas wide and 11 percent of the canvas high. Its bright face is a simple solid clean capsule with softly rounded ends and a subtle silver lower edge. Beneath it, one broad luminous fan of color spreads downward and outward across much of the tile: vivid cyan on the left, violet in the middle, magenta to coral on the right. The color wash starts along the underside of the bar and broadens smoothly toward the lower portion of the tile, creating a single coherent bold light symbol. Keep substantial bright color area, strong light/dark separation, balanced centered weight, and a simple readable silhouette.\nStyle/medium: Beautifully polished native macOS app icon, restrained dimensional digital illustration, very few large forms, crisp edges, subtle tile bevel and one soft studio highlight. Saturated, premium, playful but precise. Gentle controlled bloom preserves the clear solid white bar and broad colored fan.\nConstraints: Transparent alpha outside the rounded tile, including its corners. All color and illumination stay inside the tile. No text, letters, numbers, logos, watermarks, or vendor branding. No room, desk, laptop, monitor, screen, monitor outline, stand, tiny controls, buttons, thin linework, tiny dots, or busy details. No skinny separated laser rays, rainbow stripes, or decorative extra objects. No surrounding background, matte, checkerboard, or large external shadow. Deliver a single finished centered icon, not a grid, variations, mockup sheet, or app screenshot.",
+        "transparent_background": true
+      },
+      "output_path": "/Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-722a2188-d779-4d95-8b4c-e849d9e2d0ec.png",
+      "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc as /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-722a2188-d779-4d95-8b4c-e849d9e2d0ec.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link."
+    },
+    {
+      "id": 2,
+      "selected": false,
+      "intent": "targeted transparency-perimeter cleanup of the first generated image",
+      "arguments": {
+        "prompt": "Use case: precise-object-edit\nAsset type: Final single macOS app icon PNG with transparent alpha outside its rounded-square tile.\nPrimary request: Clean up ONLY the transparent cutout perimeter of this generated icon. Preserve the exact colorful cobalt/violet rounded-square tile, the large white/silver horizontal light-bar capsule in the upper third, the broad cyan-violet-magenta/coral downward light wash, the framing, proportions, and interior art.\nRequired correction: Remove every detached blue/violet speck, crumb, halo patch, ragged pixel, and edge artifact outside the rounded-square tile. The tile perimeter must be one smooth continuous crisp macOS rounded square with clean antialiasing. Every pixel beyond this single continuous rounded-square silhouette must be completely transparent. Keep even clear margins on all four sides. No outside shadow, no glow bleeding beyond the silhouette, no visible background, matte, checkerboard, outline, or new objects.\nOutput: One square finished master PNG, 1024 × 1024, with true alpha transparency. Preserve the original design and all interior colors; do not redesign it. No letters, text, numbers, logos, or watermark.",
+        "referenced_image_paths": [
+          "/Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-722a2188-d779-4d95-8b4c-e849d9e2d0ec.png"
+        ],
+        "transparent_background": true
+      },
+      "output_path": "/Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-ad9c2516-5d66-474f-b527-aa9ce2e99412.png",
+      "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc as /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-ad9c2516-5d66-474f-b527-aa9ce2e99412.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link."
+    },
+    {
+      "id": 3,
+      "selected": false,
+      "intent": "fresh render of the same approved icon concept with a simpler tile edge",
+      "arguments": {
+        "prompt": "Use case: logo-brand\nAsset type: ONE finished macOS app icon, square 1024 × 1024 PNG with transparent background.\nCreate an original icon for an independent RGB ambient-lighting app. The entire design is one centered opaque rounded-square tile with native macOS corners, occupying 90% of the square canvas. Outside this tile is empty true alpha transparency. The outer edge is exceptionally smooth, crisp, and clean, with absolutely no particles, stray pixels, external glow, shadow, haze, or irregular protrusions.\n\nInside the tile: bright saturated cobalt blue at upper left and rich violet at upper right. A very large bold solid white/silver horizontal rounded capsule light bar lies centered in the upper third. It spans about 60% of the canvas width and is about 11% of the canvas height, with smoothly rounded ends. Under its bottom edge, one broad, smooth, luminous triangular fan of RGB color spreads toward the bottom of the tile: brilliant cyan on the left, violet centrally, magenta and warm coral on the right. The colored light covers most of the lower two-thirds. Clip all illumination neatly inside the tile. The strong white light bar and large RGB fan form one coherent unmistakable simple symbol.\n\nPremium native macOS polish with a very subtle interior bevel and soft white studio highlight confined inside the top-left corner. Clean digital illustration with only a few large shapes, balanced centered composition, high contrast, and vivid color. Prioritize immediate recognition at 16 px and 32 px. No lettering, numbers, logos, watermark, monitor, computer, screen, desk, room, stand, thin outlines, tiny details, buttons, sparkles, laser streaks, or rainbow stripes. No mockup, alternate versions, sheet, background rectangle, or checkerboard. The four outside corners and surrounding margin must be perfectly clear transparent pixels.",
+        "transparent_background": true
+      },
+      "output_path": "/Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-06d03d04-2827-4de1-863c-886321ffe4e7.png",
+      "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc as /Users/mac/.codex/generated_images/01a16a31-dce1-7cf0-80f9-919a1871bfcc/exec-06d03d04-2827-4de1-863c-886321ffe4e7.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link."
+    }
+  ],
+  "inputs": {
+    "old_icon_anti_reference": "/Users/mac/.t3/userdata/attachments/24e623b1-f6be-4b4f-8885-6b677cf8a82e-40b92737-0bd1-4d06-8964-6f473bb5a840.png",
+    "old_icon_sent_to_tool": false
+  }
+}
