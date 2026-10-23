@@ -225,13 +225,242 @@ final class StationStatusItemTests: XCTestCase {
     }
 
     @MainActor
+    func testStatusMenuOffersEveryBuiltInPresetWithoutSavedScenes() throws {
+        let fixture = try sceneMenuFixture()
+        let status = statusItem(for: fixture.model)
+        let menu = status.makeMenu()
+        let scenes = try XCTUnwrap(menu.item(withTitle: "Scenes")?.submenu)
+        XCTAssertNil(menu.item(withTitle: "Saved scenes"))
+        XCTAssertEqual(scenes.items.map(\.title), ["Light on", "Light off", "Relax", "Working", "Movie", "Night",
+                                                 "Gaming", "Candle light", "Fireworks", "Party"])
+        XCTAssertFalse(scenes.autoenablesItems)
+        for (choice, preset) in zip(scenes.items, fixture.model.presets.scenes) {
+            XCTAssertTrue(choice.isEnabled)
+            XCTAssertTrue(choice.target === status)
+            XCTAssertNotNil(choice.action)
+            let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+            XCTAssertEqual(action, .presetScene(preset.id))
+            XCTAssertEqual(action.scenePreset(in: StationMenuState(model: fixture.model), presets: fixture.model.presets.scenes), preset)
+        }
+        for title in ["Start Color Play", "Start Music Flow"] {
+            assertNoTooltips(try XCTUnwrap(menu.item(withTitle: title)))
+        }
+        XCTAssertEqual(menu.item(withTitle: "Start Music Flow")?.submenu?.items.map(\.title),
+                       ["System Audio", "Mac Microphone", "USB Audio"])
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+    }
+
+    @MainActor
+    func testPresetMenuChecksEveryEnabledRouteAndKeepsTaskLightWhite() throws {
+        let fixture = try sceneMenuFixture()
+        let model = fixture.model
+        let status = statusItem(for: model)
+        let rgbNames = Set(["Gaming", "Fireworks", "Party"])
+        model.config.assignments["desk"]?.channel = .main
+        let taskChoices = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items)
+        for choice in taskChoices {
+            XCTAssertEqual(choice.isEnabled, !rgbNames.contains(choice.title), choice.title)
+            let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+            XCTAssertEqual(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes) != nil,
+                           choice.isEnabled, choice.title)
+        }
+        model.config.assignments["desk"]?.channel = .background
+        var other = makeLight(); other.id = "other"
+        model.devices.append(DeviceEntry(other))
+        model.config.assignments[other.id] = DeviceAssignment(deviceID: other.id, channel: .main)
+        let mixed = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items)
+        XCTAssertEqual(mixed.filter { !$0.isEnabled }.map(\.title), ["Gaming", "Fireworks", "Party"],
+                       "One incompatible enabled route blocks the whole preset before any light is changed.")
+        model.config.assignments[other.id]?.enabled = false
+        XCTAssertTrue(try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items).allSatisfy(\.isEnabled))
+        model.config.assignments["desk"]?.enabled = false
+        XCTAssertTrue(try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items).allSatisfy { !$0.isEnabled })
+        model.devices = []
+        XCTAssertEqual(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items.count, 10)
+        XCTAssertTrue(try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items).allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+    }
+
+    @MainActor
+    func testPresetActionsUseStableIDsAndResolveCurrentPresetContents() throws {
+        let fixture = try sceneMenuFixture()
+        let status = statusItem(for: fixture.model)
+        let choice = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.item(withTitle: "Gaming"))
+        let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+        let state = StationMenuState(model: fixture.model)
+        var current = fixture.model.presets.scenes.reversed().map { $0 }
+        let index = try XCTUnwrap(current.firstIndex { $0.id == "station-6" })
+        current[index].name = "Renamed Gaming"; current[index].brightness = 42
+        XCTAssertEqual(action.scenePreset(in: state, presets: current), current[index])
+        current.remove(at: index)
+        XCTAssertNil(action.scenePreset(in: state, presets: current))
+        var impostor = fixture.model.presets.scenes[6]; impostor.id = "replacement"
+        XCTAssertNil(action.scenePreset(in: state, presets: [impostor]), "Matching names cannot substitute for a removed preset ID.")
+        XCTAssertNil(StationMenuAction.presetScene("removed-preset").scenePreset(in: state, presets: fixture.model.presets.scenes))
+        XCTAssertNil(StationMenuAction.openStation.scenePreset(in: state, presets: fixture.model.presets.scenes))
+    }
+
+    func testPresetEligibilityRejectsMissingRoutesAndChannelsButAllowsRGBBulbs() throws {
+        let presets = try StationPresets.load().scenes
+        let action = StationMenuAction.presetScene("station-6")
+        let bulb = LightDevice(id: "bulb", name: "Color bulb", model: "color4", host: "192.0.2.2")
+        let device = StationMenuState.Device(light: bulb, online: false, busy: false, error: nil)
+        let main = DeviceAssignment(deviceID: bulb.id, channel: .main)
+        XCTAssertNotNil(action.scenePreset(in: StationMenuState(devices: [device], outputs: [main]), presets: presets))
+        for outputs in [[], [DeviceAssignment(deviceID: "removed")],
+                        [DeviceAssignment(deviceID: bulb.id, channel: .background)],
+                        [DeviceAssignment(deviceID: bulb.id, enabled: false)]] as [[DeviceAssignment]] {
+            XCTAssertNil(action.scenePreset(in: StationMenuState(devices: [device], outputs: outputs), presets: presets))
+        }
+        XCTAssertNil(action.scenePreset(in: StationMenuState(devices: [], outputs: [main]), presets: presets))
+    }
+
+    @MainActor
+    func testSceneSelectionRevalidatesRoutingAfterMenuOpensWithoutStoppingSync() async throws {
+        let fixture = try sceneMenuFixture()
+        let model = fixture.model
+        model.mode = .music
+        let status = statusItem(for: model)
+        let choices = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu)
+        let action = try XCTUnwrap(choices.item(withTitle: "Gaming")?.representedObject as? StationMenuAction)
+        let before = try Data(contentsOf: fixture.store.url)
+        XCTAssertNotNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+        model.config.assignments["desk"]?.channel = .main
+        XCTAssertNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+        await action.executeScene(on: model)
+        model.config.assignments["desk"]?.channel = .background
+        model.config.assignments["desk"]?.enabled = false
+        await action.executeScene(on: model)
+        model.config.assignments["desk"]?.enabled = true
+        model.devices.removeAll()
+        await action.executeScene(on: model)
+        XCTAssertEqual(model.mode, .music, "Rejected stale choices must not stop an existing sync session.")
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+        XCTAssertEqual(fixture.light.connectionCount, 0)
+        XCTAssertEqual(fixture.audio.stops, 0)
+        XCTAssertEqual(try Data(contentsOf: fixture.store.url), before)
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
+    func testBackgroundRefreshBusySnapshotKeepsCompatiblePresetsAvailable() throws {
+        let fixture = try sceneMenuFixture()
+        let model = fixture.model
+        model.devices[0].busy = true
+        let status = statusItem(for: model)
+        let choices = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items)
+        XCTAssertTrue(choices.allSatisfy(\.isEnabled), "A background refresh must not disable scene choices.")
+        let action = try XCTUnwrap(choices[6].representedObject as? StationMenuAction)
+        XCTAssertNotNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+        model.controlling = true
+        XCTAssertNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+        XCTAssertTrue(try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items).allSatisfy { !$0.isEnabled })
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+    }
+
+    @MainActor
+    func testPresetActionsRejectConflictingOperationsPreviewTerminationAndShutdown() async throws {
+        let fixture = try sceneMenuFixture()
+        let model = fixture.model
+        let status = statusItem(for: model)
+        let action = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items[2].representedObject as? StationMenuAction)
+        for gate in 0..<4 {
+            model.transitioning = gate == 0; model.controlling = gate == 1; model.scanning = gate == 2
+            status.isTerminating = gate == 3
+            let choices = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items)
+            XCTAssertTrue(choices.allSatisfy { !$0.isEnabled })
+            XCTAssertNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes,
+                                           isTerminating: status.isTerminating))
+            await action.executeScene(on: model, isTerminating: status.isTerminating)
+        }
+        model.transitioning = false; model.controlling = false; model.scanning = false
+        status.isTerminating = false
+        let preview = StationMenuState(devices: StationMenuState(model: model).devices, outputs: model.outputs, preview: true)
+        XCTAssertNil(action.scenePreset(in: preview, presets: model.presets.scenes))
+        await StationMenuAction.presetScene("stale-id").executeScene(on: model)
+        XCTAssertEqual(fixture.audio.stops, 0)
+        await model.shutdown()
+        XCTAssertNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+        XCTAssertTrue(try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu?.items).allSatisfy { !$0.isEnabled })
+        await action.executeScene(on: model)
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+        XCTAssertEqual(fixture.light.connectionCount, 0)
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
+    func testNativePresetMenuActionStopsSyncAndReservesSceneCommands() async throws {
+        let fixture = try sceneMenuFixture(holdFirstMethod: "bg_set_scene")
+        let model = fixture.model
+        model.mode = .music; fixture.audio.isRunning = true
+        let status = statusItem(for: model)
+        let scenes = try XCTUnwrap(status.makeMenu().item(withTitle: "Scenes")?.submenu)
+        let index = scenes.indexOfItem(withTitle: "Relax")
+        XCTAssertGreaterThanOrEqual(index, 0)
+        scenes.performActionForItem(at: index)
+        try await waitForMenuAction { !fixture.light.requests.isEmpty }
+        XCTAssertEqual(model.mode, .idle)
+        XCTAssertTrue(model.transitioning)
+        XCTAssertTrue(model.controlling)
+        XCTAssertTrue(model.devices[0].busy)
+        XCTAssertFalse(fixture.audio.isRunning)
+        XCTAssertEqual(fixture.audio.stops, 1)
+        let request = try XCTUnwrap(fixture.light.requests.first)
+        XCTAssertEqual(request.method, "bg_set_scene")
+        XCTAssertEqual(request.params, [.string("color"), .int(SceneCompatibility.whiteRGB(4000).packed), .int(60)])
+        fixture.light.acknowledgeHeldRequest()
+        try await waitForMenuAction { !model.transitioning && !model.controlling }
+        XCTAssertEqual(fixture.light.requests.map(\.method), ["bg_set_scene", "get_prop"])
+        XCTAssertEqual(fixture.audio.starts, 0)
+        XCTAssertFalse(model.screen.isRunning)
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
+    func testSavedScenesKeepEveryChoiceAndDispatchTheLastStableID() async throws {
+        let fixture = try sceneMenuFixture()
+        let model = fixture.model
+        model.config.savedScenes = (1...12).map { number in
+            SavedScene(name: "Saved \(number)", actions: [SavedLightState(deviceID: "desk", channel: .background,
+                                                                         properties: ["bg_bright": String(number + 20)])])
+        }
+        model.config.savedScenes.insert(SavedScene(name: "Empty", actions: []), at: 0)
+        let status = statusItem(for: model)
+        let menu = status.makeMenu()
+        XCTAssertEqual(menu.item(withTitle: "Scenes")?.submenu?.items.count, 10)
+        let saved = try XCTUnwrap(menu.item(withTitle: "Saved scenes")?.submenu)
+        XCTAssertEqual(saved.items.map(\.title), model.config.savedScenes.map(\.name))
+        XCTAssertFalse(saved.items[0].isEnabled)
+        for (choice, scene) in zip(saved.items, model.config.savedScenes) {
+            XCTAssertEqual(choice.representedObject as? StationMenuAction, .savedScene(scene.id))
+            XCTAssertTrue(choice.target === status)
+            XCTAssertNotNil(choice.action)
+        }
+        let lastID = try XCTUnwrap(model.config.savedScenes.last?.id)
+        model.config.savedScenes.reverse()
+        let current = try XCTUnwrap(model.config.savedScenes.firstIndex { $0.id == lastID })
+        model.config.savedScenes[current].actions[0].properties["bg_bright"] = "47"
+        saved.performActionForItem(at: saved.items.count - 1)
+        try await waitForMenuAction { fixture.light.requests.count == 2 && !model.transitioning && !model.controlling }
+        XCTAssertEqual(fixture.light.requests.map(\.method), ["bg_set_bright", "get_prop"])
+        XCTAssertEqual(fixture.light.requests.first?.params, [.int(47), .string("smooth"), .int(300)])
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
     func testMenuInspectionDoesNotEnumeratePersistObserveOrCapture() throws {
-        let audio = MenuAudioCapture()
         var displayLookups = 0
-        let (model, store) = try menuModel(audio: audio, displayProvider: { displayLookups += 1; return [] })
-        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let fixture = try sceneMenuFixture(displayProvider: { displayLookups += 1; return [] })
+        let model = fixture.model; let store = fixture.store; let audio = fixture.audio
+        let status = statusItem(for: model)
         let before = try Data(contentsOf: store.url)
         for _ in 0..<3 {
+            let menu = status.makeMenu()
+            let scenes = try XCTUnwrap(menu.item(withTitle: "Scenes")?.submenu?.items)
+            for choice in scenes {
+                let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+                XCTAssertNotNil(action.scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes))
+            }
             for mode in [SyncMode.screen, .music] {
                 XCTAssertNotNil(StationSyncMenu.startItem(mode, state: StationMenuState(model: model)).submenu)
             }
@@ -246,6 +475,9 @@ final class StationStatusItemTests: XCTestCase {
         XCTAssertFalse(model.screen.isRunning)
         XCTAssertFalse(model.audio.isRunning)
         XCTAssertFalse(model.transitioning)
+        XCTAssertFalse(model.controlling)
+        XCTAssertTrue(fixture.light.requests.isEmpty)
+        XCTAssertEqual(fixture.light.connectionCount, 0)
     }
 
     @MainActor
@@ -391,16 +623,51 @@ final class StationStatusItemTests: XCTestCase {
 
     @MainActor
     private func menuModel(audio: MenuAudioCapture,
-                           displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil) throws -> (StationModel, ConfigurationStore) {
+                           displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil,
+                           light: LightDevice? = nil) throws -> (StationModel, ConfigurationStore) {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("station-menu-\(UUID().uuidString)")
         let store = ConfigurationStore(url: directory.appendingPathComponent("station.json"))
-        var config = StationConfiguration(); config.devices = [makeLight()]; config.displayID = 2
+        var config = StationConfiguration(); config.devices = [light ?? makeLight()]; config.displayID = 2
         try store.save(config)
         let model = StationModel(store: store, previewMode: false, displayProvider: displayProvider,
                                  notificationCenter: NotificationCenter(), audioCapture: audio)
         model.displays = [display(), display(id: 2)]
         model.audioInputs = audioInputs()
         return (model, store)
+    }
+
+    @MainActor
+    private func sceneMenuFixture(holdFirstMethod: String? = nil,
+                                  displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil) throws
+        -> (model: StationModel, store: ConfigurationStore, light: LoopbackLight, audio: MenuAudioCapture) {
+        let light = try LoopbackLight(holdFirstMethod: holdFirstMethod)
+        let audio = MenuAudioCapture()
+        do {
+            let device = LightDevice(id: "desk", name: "Desk light", model: "lamp15", host: "127.0.0.1", port: light.port,
+                                     properties: LoopbackLight.properties)
+            let (model, store) = try menuModel(audio: audio, displayProvider: displayProvider, light: device)
+            addTeardownBlock {
+                await model.shutdown()
+                light.stop()
+                XCTAssertNil(light.error)
+                try FileManager.default.removeItem(at: store.url.deletingLastPathComponent())
+            }
+            return (model, store, light, audio)
+        } catch { light.stop(); throw error }
+    }
+
+    @MainActor
+    private func statusItem(for model: StationModel) -> StationStatusItem {
+        _ = NSApplication.shared
+        return StationStatusItem(model: model, openStation: { XCTFail("Scene menus must not open Station.") },
+                                 openSettings: { XCTFail("Scene menus must not open Settings.") })
+    }
+
+    @MainActor
+    private func waitForMenuAction(_ condition: @MainActor () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(3)
+        while !condition() && Date() < deadline { try await Task.sleep(nanoseconds: 10_000_000) }
+        XCTAssertTrue(condition(), "Native menu action did not finish before the deadline.")
     }
 
     private func event(id: AEEventID, property: OSType? = nil) -> NSAppleEventDescriptor {
@@ -419,6 +686,7 @@ private final class MenuAudioCapture: StationAudioCapturing {
     var enumerations = 0
     var observations = 0
     var starts = 0
+    var stops = 0
 
     func availableAudioInputs() throws -> [AudioInputDevice] { enumerations += 1; return [] }
     func observeInputs(onChange: @escaping @MainActor @Sendable () -> Void) throws -> (@MainActor () -> Void) {
@@ -429,5 +697,5 @@ private final class MenuAudioCapture: StationAudioCapturing {
         starts += 1
         XCTFail("Menu inspection and preparation must not start capture.")
     }
-    func stop() async { isRunning = false }
+    func stop() async { stops += 1; isRunning = false }
 }

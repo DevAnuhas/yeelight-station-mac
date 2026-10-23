@@ -7,7 +7,8 @@ enum StationMenuAction: Equatable {
     case openStation, settings, quit
     case power(deviceID: String, channel: LightChannel, on: Bool)
     case brightness(deviceID: String, channel: LightChannel, percent: Int)
-    case start(SyncMode, displayID: UInt32? = nil, audioSource: AudioSource? = nil, inputDeviceUID: String? = nil), stop, savedScene(UUID)
+    case start(SyncMode, displayID: UInt32? = nil, audioSource: AudioSource? = nil, inputDeviceUID: String? = nil), stop
+    case presetScene(String), savedScene(UUID)
 
     struct StartRequest: Equatable {
         let mode: SyncMode
@@ -44,6 +45,26 @@ enum StationMenuAction: Equatable {
         guard model.canStart(request.mode, displayID: request.displayID) else { return nil }
         if let displayID = request.displayID, !model.selectDisplay(displayID) { return nil }
         return model.canStart(request.mode) ? request.mode : nil
+    }
+
+    func scenePreset(in state: StationMenuState, presets: [ScenePreset], isTerminating: Bool = false) -> ScenePreset? {
+        guard !isTerminating, state.allowsControl, !state.outputs.isEmpty,
+              case .presetScene(let id) = self, let scene = presets.first(where: { $0.id == id }) else { return nil }
+        // Validate every enabled route before allowing any scene command. In
+        // particular, RGB presets must never reach a lamp's white task LEDs.
+        for output in state.outputs {
+            guard let device = state.devices.first(where: { $0.light.id == output.deviceID }),
+                  output.channel == .main || device.light.hasBackground,
+                  (try? SceneCompatibility.adapted(scene, device: device.light, channel: output.channel)) != nil else { return nil }
+        }
+        return scene
+    }
+
+    @MainActor
+    func executeScene(on model: StationModel, isTerminating: Bool = false) async {
+        guard let scene = scenePreset(in: StationMenuState(model: model), presets: model.presets.scenes,
+                                     isTerminating: isTerminating) else { return }
+        await model.apply(scene)
     }
 
     // Resolve again on selection: discovery may change devices while a menu is open.
@@ -101,6 +122,7 @@ struct StationMenuState {
         }
     }
     let devices: [Device]
+    let outputs: [DeviceAssignment]
     let mode: SyncMode
     let transitioning: Bool
     let controlling: Bool
@@ -155,6 +177,7 @@ struct StationMenuState {
 
     @MainActor init(model: StationModel) {
         devices = model.devices.map { Device(light: $0.device, online: $0.online, busy: $0.busy, error: $0.error) }
+        outputs = model.outputs
         mode = model.mode; transitioning = model.transitioning; controlling = model.controlling
         scanning = model.scanning; preview = model.preview; hasOutputs = !model.outputs.isEmpty; error = model.error
         displays = model.displays; selectedDisplayID = model.selectedDisplay?.id; audioSource = model.audioSource
@@ -162,12 +185,13 @@ struct StationMenuState {
         shuttingDown = model.isShuttingDown
     }
 
-    init(devices: [Device], mode: SyncMode = .idle, transitioning: Bool = false, controlling: Bool = false,
+    init(devices: [Device], outputs: [DeviceAssignment] = [], mode: SyncMode = .idle, transitioning: Bool = false, controlling: Bool = false,
          scanning: Bool = false, preview: Bool = false, hasOutputs: Bool = true, error: String? = nil,
          displays: [CaptureDisplay] = [], selectedDisplayID: UInt32? = nil, audioSource: AudioSource = .system,
          audioInputs: [AudioInputDevice] = [], selectedAudioInputUID: String? = nil,
          shuttingDown: Bool = false) {
-        self.devices = devices; self.mode = mode; self.transitioning = transitioning; self.controlling = controlling
+        self.devices = devices; self.outputs = outputs.filter(\.enabled)
+        self.mode = mode; self.transitioning = transitioning; self.controlling = controlling
         self.scanning = scanning; self.preview = preview; self.hasOutputs = hasOutputs; self.error = error
         self.displays = displays; self.selectedDisplayID = selectedDisplayID; self.audioSource = audioSource
         self.audioInputs = audioInputs; self.selectedAudioInputUID = selectedAudioInputUID
@@ -305,7 +329,7 @@ final class StationStatusItem: NSObject {
         button.highlight(false)
     }
 
-    private func makeMenu() -> NSMenu {
+    func makeMenu() -> NSMenu {
         let state = StationMenuState(model: model)
         let menu = NSMenu()
         menu.autoenablesItems = false
@@ -354,18 +378,23 @@ final class StationStatusItem: NSObject {
                                                   selector: #selector(performAction(_:)), isTerminating: isTerminating))
         }
         menu.addItem(menuItem("Stop Sync", action: .stop, enabled: state.allowsStop))
+        let scenes = menuItem("Scenes")
+        let presets = NSMenu(title: "Scenes"); presets.autoenablesItems = false
+        for scene in model.presets.scenes {
+            let action = StationMenuAction.presetScene(scene.id)
+            presets.addItem(menuItem(scene.name, action: action,
+                                     enabled: action.scenePreset(in: state, presets: model.presets.scenes,
+                                                                 isTerminating: isTerminating) != nil))
+        }
+        scenes.submenu = presets; scenes.isEnabled = !isTerminating; menu.addItem(scenes)
         if !model.config.savedScenes.isEmpty {
-            let scenes = menuItem("Saved scenes")
-            let presets = NSMenu(title: "Saved scenes"); presets.autoenablesItems = false
-            // Keep quick access short; the full library remains in Station.
-            for scene in model.config.savedScenes.prefix(10) {
-                presets.addItem(menuItem(concise(scene.name), action: .savedScene(scene.id),
+            let saved = menuItem("Saved scenes")
+            let choices = NSMenu(title: "Saved scenes"); choices.autoenablesItems = false
+            for scene in model.config.savedScenes {
+                choices.addItem(menuItem(concise(scene.name), action: .savedScene(scene.id),
                                          enabled: state.allowsControl && !scene.actions.isEmpty))
             }
-            if model.config.savedScenes.count > 10 {
-                presets.addItem(.separator()); presets.addItem(menuItem("All scenes in Station…", action: .openStation))
-            }
-            scenes.submenu = presets; scenes.isEnabled = !isTerminating; menu.addItem(scenes)
+            saved.submenu = choices; saved.isEnabled = !isTerminating; menu.addItem(saved)
         }
         menu.addItem(.separator())
         menu.addItem(menuItem("Settings…", action: .settings, key: ","))
@@ -391,7 +420,8 @@ final class StationStatusItem: NSObject {
         case .openStation: openStation()
         case .settings: openSettings()
         case .quit: NSApp.terminate(nil)
-        default: Task { await perform(action) }
+        case .power, .brightness, .start, .stop, .presetScene, .savedScene:
+            Task { await perform(action) }
         }
     }
 
@@ -406,10 +436,13 @@ final class StationStatusItem: NSObject {
             await model.start(mode)
         case .stop:
             guard state.allowsStop else { return }; await model.stopSync()
+        case .presetScene:
+            await action.executeScene(on: model, isTerminating: isTerminating)
         case .savedScene(let id):
-            guard state.allowsControl, let scene = model.config.savedScenes.first(where: { $0.id == id }) else { return }
+            guard state.allowsControl, let scene = model.config.savedScenes.first(where: { $0.id == id }),
+                  !scene.actions.isEmpty else { return }
             await model.applySaved(scene)
-        default: break
+        case .openStation, .settings, .quit: return
         }
     }
 }
