@@ -332,7 +332,6 @@ struct ScheduleEditorView: View {
             VStack(alignment: .leading, spacing: 12) {
                 if let saveError {
                     Text(saveError).font(.callout).foregroundStyle(.orange).textSelection(.enabled)
-                        .accessibilityLabel("Couldn’t save schedule: \(saveError)")
                 }
                 HStack {
                     Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
