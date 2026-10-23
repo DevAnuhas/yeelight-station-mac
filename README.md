@@ -6,22 +6,28 @@ An independent native macOS implementation of Yeelight Station, reconstructed fr
 
 This is a working development port, not full Windows feature parity. See [implemented scope and verification](docs/implementation/status.md).
 
-## Run
+## Install
 
-Requires macOS 14 or later and Xcode/Swift 6 tooling to build. No external Swift packages or Windows runtime are required.
+Requires **macOS 14 or later**. [Download the v0.2.0 macOS preview](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.0/Yeelight-Station-macOS.zip), unzip it, and drag **Yeelight Station.app** into **Applications**. Open the app from there.
 
-```sh
-scripts/build-app.sh
-open "dist/Yeelight Station.app"
-```
-
-The script builds a universal Apple Silicon/Intel app and creates `dist/Yeelight-Station-macOS.zip`. Use `UNIVERSAL=0` to build only the current architecture. Development builds use ad-hoc signing. The current 0.2.0 release is Developer ID signed and notarized. For daily use, install it in Applications; follow the [signing, notarization and update workflow](docs/runbooks/distribution.md).
+The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes and checksums](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.0) describe this preview's validation and limits.
 
 Allow Station in **System Settings → Privacy & Security → Local Network** and permit its LAN traffic in any network filter.
 
 Enable **LAN Control** in the Yeelight phone app, connect the Mac to the light's LAN, then choose **Add Light**. IP entry is available if multicast discovery is blocked. Color Play/system audio request macOS recording access on Start; microphone access is requested only for microphone input.
 
 Closing the window leaves Station in the menu bar. Click or right-click its icon for separate task-light/backlight controls, brightness, saved scenes, and sync actions. **Quit** stops capture and releases sessions. The optional restore setting restores static color, brightness and power, not dynamic flows or proprietary effects.
+
+## Build from source
+
+Requires Xcode/Swift 6 tooling. No external Swift packages or Windows runtime are required.
+
+```sh
+scripts/build-app.sh
+open "dist/Yeelight Station.app"
+```
+
+The script builds a universal Apple Silicon/Intel app and creates `dist/Yeelight-Station-macOS.zip`. Use `UNIVERSAL=0` to build only the current architecture. Development builds use ad-hoc signing. Follow the [signing, notarization and update workflow](docs/runbooks/distribution.md) to build an installed release with a persistent Developer ID identity.
 
 For a disconnected visual preview:
 
