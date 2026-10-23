@@ -44,7 +44,37 @@ If the wait times out, Apple may still be processing the upload. Resume the exis
 KEYCHAIN_PROFILE='Station-Notary' scripts/notarize-app.sh --resume '/absolute/receipt/directory'
 ```
 
+## Create the DMG
+
+The drag-to-Applications image is built headlessly with [dmgbuild](https://dmgbuild.readthedocs.io/en/latest/settings.html). Its hash-pinned dependencies install into ignored `.tools/dmgbuild`; Python 3.10 or later is required. The app must already pass signature, stapled-ticket and Gatekeeper checks.
+
+```sh
+scripts/setup-dmg.sh
+CODE_SIGN_IDENTITY='<Developer ID Application certificate fingerprint>' scripts/build-dmg.sh
+KEYCHAIN_PROFILE='Station-Notary' scripts/notarize-dmg.sh
+```
+
+The output is `dist/Yeelight-Station-<version>-universal.dmg`, using the built app's version. It includes both architecture slices, the MIT license, an Applications shortcut, a Retina background and a saved Finder layout. The build verifies a mounted copy before publishing the signed image. Recreate the background with `swift scripts/make-dmg-background.swift packaging/dmg` when changing its source.
+
+Keep Finder metadata changes on the volume, outside the signed app. In particular, dmgbuild's `hide_extensions` option writes `com.apple.FinderInfo` to the app and causes mounted-bundle strict signature verification to fail. Finder already treats `.app` extensions specially. The saved window includes room for path/status bars, which can follow the user's Finder preferences despite per-volume visibility flags.
+
+The DMG container has its own notarization submission and stapled ticket, in addition to the app ticket inside it. The notary script preserves an immutable submission image and private receipts, then atomically replaces the distribution image only after Apple accepts it and signature, ticket, image and Gatekeeper checks pass. For a timeout or connection failure, resume the recorded submission rather than uploading again:
+
+```sh
+KEYCHAIN_PROFILE='Station-Notary' scripts/notarize-dmg.sh --resume '/absolute/DMG/receipt/directory'
+```
+
+Generate `SHA256SUMS.txt` from the final stapled DMG and recreated ZIP, after notarization changes have finished. Neither a checksum from the pre-stapled image nor an old ZIP checksum describes the final download.
+
+Run the isolated packaging regressions when changing these scripts. They substitute signing, notarization and disk tools with fixtures, so they perform no uploads or real mounts:
+
+```sh
+python3 -m unittest discover -s scripts/tests -p 'test_dmg.py' -v
+```
+
 ## Install
+
+For published downloads, open the DMG, drag **Yeelight Station** to the **Applications** shortcut, then eject the image and launch the installed copy. The image includes the MIT license. A ZIP is available as an alternate download on the same release page.
 
 Quit Station through its menu so capture stops and the configured light restoration completes. Replace the app only after it has exited; leave the settings file in Application Support intact.
 
@@ -58,3 +88,20 @@ The installer requires a valid Developer ID signature, stapled ticket and Gateke
 Launch the installed copy for daily use. Closing its window leaves the menu bar icon and any deliberately started sync running. Click or right-click the icon for controls, saved scenes, Settings and Quit. Enable **Start in the menu bar at login** only if desired; login launch must not start screen or microphone capture automatically.
 
 For connection recovery, see [local-network access](local-network.md). See [verification status](../implementation/status.md) for what has actually been signed, notarized, installed and tested.
+
+## Publish on GitHub
+
+Create a GitHub release for the version tag and attach the notarized DMG, alternate ZIP and `SHA256SUMS.txt`. A tag by itself has no downloadable app assets. Publish regular releases with **Set as the latest release** enabled; GitHub excludes drafts and prereleases from its Latest channel. Keep experimental builds marked as prereleases. See [GitHub's release API](https://docs.github.com/en/rest/releases/releases#get-the-latest-release) and [release creation options](https://cli.github.com/manual/gh_release_create).
+
+After committing and pushing the release source and annotated tag, publish from the prepared artifacts. Substitute the intended version and a file containing reviewed release notes:
+
+```sh
+gh release create v0.2.2 \
+  dist/Yeelight-Station-0.2.2-universal.dmg \
+  dist/Yeelight-Station-macOS.zip dist/SHA256SUMS.txt \
+  --verify-tag --latest \
+  --title 'Yeelight Station for Mac 0.2.2' \
+  --notes-file /path/to/release-notes.md
+```
+
+Verify that `gh release list --json tagName,isLatest,isPrerelease,isDraft` reports the intended release as Latest, non-prerelease and non-draft. Download its assets anonymously and compare their SHA-256 hashes with the published checksums before handing out the links.

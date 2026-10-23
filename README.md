@@ -2,9 +2,9 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3b82f6" alt="MIT License"></a>
-  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/preview-v0.2.1-a99bff" alt="Preview release v0.2.1"></a>
+  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/latest"><img src="https://img.shields.io/github/v/release/DevAnuhas/yeelight-station-mac?color=a99bff" alt="Latest release"></a>
   <a href="#install"><img src="https://img.shields.io/badge/macOS-14%2B-20232d?logo=apple&amp;logoColor=white" alt="Requires macOS 14 or later"></a>
-  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/Universal-Apple%20Silicon%20%2B%20Intel-5b6de6" alt="Universal app for Apple Silicon and Intel"></a>
+  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/latest"><img src="https://img.shields.io/badge/Universal-Apple%20Silicon%20%2B%20Intel-5b6de6" alt="Universal app for Apple Silicon and Intel"></a>
   <a href="docs/runbooks/distribution.md"><img src="https://img.shields.io/badge/Distribution-Signed%20%26%20Notarized-20a77a" alt="Developer ID signed and Apple notarized"></a>
 </p>
 <h1 align="center">Yeelight Station for Mac</h1>
@@ -15,9 +15,9 @@ This is a working development port, not full Windows feature parity. See [implem
 
 ## Install
 
-Requires **macOS 14 or later**. [Download the v0.2.1 macOS preview](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.1/Yeelight-Station-macOS.zip), unzip it, and drag **Yeelight Station.app** into **Applications**. Open the app from there.
+Requires **macOS 14 or later**. [Download Yeelight Station 0.2.2 (.dmg)](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.2/Yeelight-Station-0.2.2-universal.dmg), open the disk image, and drag **Yeelight Station** onto **Applications**. Eject the disk image and open the app from Applications. Quit an older copy before replacing it; your saved lights and settings stay in Application Support.
 
-The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes and checksums](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1) describe this preview's validation and limits.
+The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes, checksums and an alternate ZIP](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.2) describe validation and limits.
 
 Allow Station in **System Settings → Privacy & Security → Local Network** and permit its LAN traffic in any network filter.
 
