@@ -31,7 +31,7 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 [ "$(uname -s)" = Darwin ] || fail 'Notarization requires macOS and Xcode command line tools.'
-for tool in xcrun codesign ditto plutil shasum spctl; do
+for tool in xcrun codesign ditto plutil shasum spctl zip; do
     command -v "$tool" >/dev/null || fail "Missing $tool. Install/select Xcode command line tools."
 done
 xcrun --find notarytool >/dev/null 2>&1 || fail 'notarytool is unavailable. Select Xcode 14 or newer with xcode-select.'
@@ -121,6 +121,9 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 # ZIP files cannot be stapled: recreate the archive from the stapled app.
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$zip_stage/distribution.zip"
+# The notice is an archive sibling, preserving the accepted app signature/ticket.
+[ -f "$project_path/LICENSE" ] || fail 'The repository license is missing.'
+zip -j -q "$zip_stage/distribution.zip" "$project_path/LICENSE"
 mv -f "$zip_stage/distribution.zip" "$zip_path"
 shasum -a 256 "$zip_path" > "$receipt/distribution-archive.sha256"
 printf 'Accepted, stapled, signature-verified and Gatekeeper-assessed.\n' > "$receipt/completed.txt"

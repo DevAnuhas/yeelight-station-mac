@@ -19,7 +19,7 @@ fi
 [ "$#" -eq 0 ] || { printf 'error: unexpected build argument; use --help.\n' >&2; exit 1; }
 cd "$(dirname "$0")/.."
 fail() { printf 'error: %s\n' "$*" >&2; exit 1; }
-for tool in swift lipo codesign ditto file plutil; do
+for tool in swift lipo codesign ditto file plutil zip; do
     command -v "$tool" >/dev/null || fail "Missing $tool. Install/select Xcode command line tools."
 done
 release="${RELEASE:-0}"
@@ -112,6 +112,9 @@ if [ "$release" = 1 ]; then
     codesign --verify --strict --test-requirement "$requirement and identifier \"dev.yeelightstation.stationctl\"" "$cli_path" || fail 'The CLI is not signed with the expected Developer ID Application identity.'
 fi
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$zip_path"
+# Keep the license alongside the app without changing its signed resources.
+[ -f "$PWD/LICENSE" ] || fail 'The repository license is missing.'
+zip -j -q "$zip_path" "$PWD/LICENSE"
 # Publish only after all build, signature, architecture and archive checks pass.
 if [ -e "$final_path" ] || [ -L "$final_path" ]; then
     [ -d "$final_path" ] && [ ! -L "$final_path" ] || fail "Refusing to replace a non-bundle/symlink at $final_path."
