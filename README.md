@@ -15,13 +15,15 @@ This is a working development port, not full Windows feature parity. See [implem
 
 ## Install
 
-Requires **macOS 14 or later**. [Download Yeelight Station 0.2.2 (.dmg)](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.2/Yeelight-Station-0.2.2-universal.dmg), open the disk image, and drag **Yeelight Station** onto **Applications**. Eject the disk image and open the app from Applications. Quit an older copy before replacing it; your saved lights and settings stay in Application Support.
+Requires **macOS 14 or later**. [Download Yeelight Station 0.2.3 (.dmg)](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.3/Yeelight-Station-0.2.3-universal.dmg), open the disk image, and drag **Yeelight Station** onto **Applications**. Eject the disk image and open the app from Applications. Quit an older copy before replacing it; your saved lights and settings stay in Application Support.
 
-The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes, checksums and an alternate ZIP](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.2) describe validation and limits.
+The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes, checksums and an alternate ZIP](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.3) describe validation and limits.
 
 Allow Station in **System Settings → Privacy & Security → Local Network** and permit its LAN traffic in any network filter.
 
 Enable **LAN Control** in the Yeelight phone app, connect the Mac to the light's LAN, then choose **Add Light**. IP entry is available if multicast discovery is blocked. Color Play/system audio request macOS recording access on Start; microphone access is requested only for microphone input.
+
+Displays load automatically. Choose a display for Color Play or Music Flow with system audio; when several are connected, each mode's menu-bar Start action offers display choices. My Lights keeps sliders responsive while updating the light, and its color popover includes a color field, hue, quick colors and hex input.
 
 Closing the window leaves Station in the menu bar. Click or right-click its icon for separate task-light/backlight controls, brightness, saved scenes, and sync actions. **Quit** stops capture and releases sessions. The optional restore setting restores static color, brightness and power, not dynamic flows or proprietary effects.
 

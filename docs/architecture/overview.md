@@ -19,6 +19,10 @@ Closing a window leaves the process and deliberately started sync running in the
 
 Ordinary TCP controls wait for correlated acknowledgements and surface device errors. Realtime frames do not require individual acknowledgements. Session/heartbeat responses establish freshness; unsupported channels and methods fail explicitly.
 
+Brightness, temperature and color adjustments update the visible model immediately. One serialized worker coalesces queued changes by device, channel and property while keeping the in-flight command immutable. Confirmed properties are stored separately from desired values; fresh property replies merge underneath pending edits, and rejected edits revert to confirmed state. The app requests observed-only properties so transport cache fallback cannot overwrite an acknowledged value. Scenes, capture startup and shutdown form barriers around accepted adjustments; saved scenes and persisted device state use confirmed values.
+
+Startup and display-topology notifications enumerate Core Graphics displays without requesting recording permission. A missing saved display is reconciled to an available choice. Start freezes the selected display and audio source, refreshes availability before device work and before capture, and rejects a stale choice rather than silently switching it. Color Play and system-audio Music Flow share that selection; microphone capture is display-independent. Disconnecting an active capture display stops sync through normal cleanup.
+
 ## Platform boundaries
 
 The Windows app's Qt UI, WASAPI/desktop capture, daemon processes, Razer Chroma DLL and Overwolf runtime are not macOS binaries. SwiftUI, ScreenCaptureKit and AVAudioEngine replace the native UI/capture/service functions. Chroma/Overwolf game integration, cube/rays segment mapping, proprietary FX identifiers, cloud account behavior and Windows settings/database import remain unported.

@@ -96,11 +96,11 @@ Create a GitHub release for the version tag and attach the notarized DMG, altern
 After committing and pushing the release source and annotated tag, publish from the prepared artifacts. Substitute the intended version and a file containing reviewed release notes:
 
 ```sh
-gh release create v0.2.2 \
-  dist/Yeelight-Station-0.2.2-universal.dmg \
+gh release create v0.2.3 \
+  dist/Yeelight-Station-0.2.3-universal.dmg \
   dist/Yeelight-Station-macOS.zip dist/SHA256SUMS.txt \
   --verify-tag --latest \
-  --title 'Yeelight Station for Mac 0.2.2' \
+  --title 'Yeelight Station 0.2.3' \
   --notes-file /path/to/release-notes.md
 ```
 
