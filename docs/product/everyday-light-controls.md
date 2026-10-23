@@ -1,0 +1,18 @@
+# Everyday light controls
+
+Direction: add native macOS equivalents of the device details, schedules, sleep timer and power-on defaults in the user's supplied Yeelight phone screenshots. The user delegates the presentation and appropriate implementation choices. This contract records those choices; it does not claim full phone-app parity.
+
+## Behaviour
+
+- Device settings are reachable from each light. Show the reported address, port, model, firmware, device identifier and capabilities, with copyable values. Uptime, Wi-Fi name/signal and MAC address read “Not reported over LAN” when no verified source exists. Never substitute Mac statistics or derive a MAC from the device identifier.
+- Automations contains named on/off schedules for one explicit light/channel, editable and individually enabled. Support a dated one-shot, every day, weekdays and custom weekdays. Require at least one action; permit an optional compatible preset or confirmed static light state for the on-action. Show the next action and last attempt/result.
+- Recurring schedules run on this Mac. Station must be running, the Mac awake and the light reachable. Explain that before saving. Skip missed actions after sleep, quit or a large clock jump; never replay a burst of old actions. Claim an occurrence before sending it, and never automatically retry an uncertain write. A scheduled power action stops active sync before applying, so later restoration cannot undo it.
+- Sleep timer uses the documented device timer for the task light when advertised. It requires that channel already on, accepts 1–60 minutes in this UI, reports errors, and can be cancelled. The timer runs on the light after Station quits. For a backlight or unsupported device, offer a clearly labelled Mac timer for that channel, requiring Station awake/running. Never send undocumented background cron commands or silently switch execution modes after an error.
+- Power-on defaults offers an explicit “Save current as power-on default” for each channel advertising the documented command, while on. It never powers a light on just to save a default. Explain that this saves the current state for a hard-power restart. The screenshot's automatic-save and power-resumption switches remain managed in the Yeelight app because no verified lamp15 LAN contract exists.
+- Opening pages/settings performs no light writes, recording or permission requests. Existing controls remain responsive. Removing a light removes its local automations; shutdown cancels/drains pending automation operations. Malformed settings are rejected without overwriting the file, and existing settings load with an empty schedule collection.
+
+## Acceptance and limits
+
+Verify command spelling/parameters and capability gates against the [official LAN specification](https://www.yeelight.com/download/Yeelight_Inter-Operation_Spec.pdf), and preserve [main/backlight separation](../architecture/overview.md). Simulator tests verify once-only scheduling, persistence, daylight-saving and overnight behaviour, missed events, failed/uncertain commands, shutdown and unsupported methods. Native synthetic views verify the empty state, schedule editor and device settings at the minimum supported window width. Physical timer/default behaviour remains unverified until a deliberate hardware test; advertisement alone is not validation.
+
+No cloud integration, wake scheduling, firmware updates or undocumented power-behaviour switches are included. Quality is evaluated with deterministic regressions and task completion in the shipped UI; no telemetry is added and no usage baseline is assumed.

@@ -239,6 +239,14 @@ Before claiming Station parity, obtain captures/tests for:
 
 There is no evidence here for speculative extra device ports, a mandatory music-mode step before UDP, or an undocumented binary/AES wrapper.
 
+## Documented sleep timers and defaults
+
+The [official LAN specification](https://www.yeelight.com/download/Yeelight_Inter-Operation_Spec.pdf), §§4.1–4.3, documents `cron_add [0, minutes]` for delayed off, `cron_get [0]` for timer inspection, `cron_del [0]` for cancellation and `get_prop ["delayoff"]` for remaining minutes. Timer creation requires the light on. The Mac UI restricts duration to 1–60 minutes, matching the documented property range; the command's full firmware limits and replacement behaviour are not established. These contracts contain no dates, weekdays or recurring on-actions.
+
+`set_default []` saves the current on-state for a hard-power restart; `bg_set_default []` addresses the background channel. Saved lamp15 firmware 38 discovery advertises these commands and all three `cron_*` methods. No background cron methods are advertised. No verified schema exists here for the phone app's automatic-state-save or power-resumption switches. `set_ps` is not advertised and is not used. Uptime, lamp Wi-Fi signal/network and MAC are not documented discovery/get-property fields; a device ID is not a verified MAC address.
+
+Advertisement establishes eligibility to attempt a command, not hardware validation. Current UI behaviour and Mac-hosted scheduling requirements are defined in [everyday light controls](../product/everyday-light-controls.md).
+
 ## Reproduction
 
 Do not execute the Windows targets. The following commands inspect copies:

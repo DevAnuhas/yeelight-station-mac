@@ -2,6 +2,7 @@
 
 - [Run and build Station](../README.md)
 - [Current handoff](../CONTEXT.md)
+- [Everyday light controls](product/everyday-light-controls.md)
 - [Architecture and platform boundaries](architecture/overview.md)
 - [Implementation and verification status](implementation/status.md)
 - [Recovered Windows device protocol](research/device-protocol.md)

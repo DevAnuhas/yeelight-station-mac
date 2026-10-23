@@ -32,3 +32,9 @@ The Windows app's Qt UI, WASAPI/desktop capture, daemon processes, Razer Chroma 
 The screen sampler and audio envelope are new implementations guided by recovered configuration. They are not proven bit-identical reconstructions of the Windows capture algorithms. Current screen routing chooses one display at a time; original concurrent multi-monitor capture remains a parity gap.
 
 See [verification status](../implementation/status.md) before making compatibility claims.
+
+## Scheduled controls
+
+`SchedulePlanner` is a pure calendar module in StationCore. It computes dated, weekly and overnight channel actions with daylight-saving handling; sleep timers retain an exact deadline. The configuration stores definitions and per-action occurrence claims while preserving version-1 settings compatibility.
+
+StationModel drives the local scheduler only after application startup. It skips sleep/wake intervals and gaps longer than 90 seconds, persists each claim before network work and uses the same serialized control path as manual commands. It does not wake the Mac or replay missed actions. A scheduled action stops sync before sending channel commands, preventing restoration from undoing it. Device-owned task-light timers and channel-specific default saving use capability-gated documented commands; backlight countdowns use the local scheduler. See [behaviour and limits](../product/everyday-light-controls.md) and [protocol basis](../research/device-protocol.md#documented-sleep-timers-and-defaults).
