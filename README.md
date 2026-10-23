@@ -1,4 +1,12 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<img src="assets/readme-hero.png" width="1600" alt="Yeelight Station for Mac — the real Station dashboard with Color Play, Music Flow, scenes and local lighting controls">
+
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-3b82f6" alt="MIT License"></a>
+  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/preview-v0.2.1-a99bff" alt="Preview release v0.2.1"></a>
+  <a href="#install"><img src="https://img.shields.io/badge/macOS-14%2B-20232d?logo=apple&amp;logoColor=white" alt="Requires macOS 14 or later"></a>
+  <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/Universal-Apple%20Silicon%20%2B%20Intel-5b6de6" alt="Universal app for Apple Silicon and Intel"></a>
+  <a href="docs/runbooks/distribution.md"><img src="https://img.shields.io/badge/Distribution-Signed%20%26%20Notarized-20a77a" alt="Developer ID signed and Apple notarized"></a>
+</p>
 
 # Yeelight Station for Mac
 
@@ -8,15 +16,24 @@ This is a working development port, not full Windows feature parity. See [implem
 
 ## Install
 
-Requires **macOS 14 or later**. [Download the v0.2.0 macOS preview](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.0/Yeelight-Station-macOS.zip), unzip it, and drag **Yeelight Station.app** into **Applications**. Open the app from there.
+Requires **macOS 14 or later**. [Download the v0.2.1 macOS preview](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.2.1/Yeelight-Station-macOS.zip), unzip it, and drag **Yeelight Station.app** into **Applications**. Open the app from there.
 
-The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes and checksums](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.0) describe this preview's validation and limits.
+The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes and checksums](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1) describe this preview's validation and limits.
 
 Allow Station in **System Settings → Privacy & Security → Local Network** and permit its LAN traffic in any network filter.
 
 Enable **LAN Control** in the Yeelight phone app, connect the Mac to the light's LAN, then choose **Add Light**. IP entry is available if multicast discovery is blocked. Color Play/system audio request macOS recording access on Start; microphone access is requested only for microphone input.
 
 Closing the window leaves Station in the menu bar. Click or right-click its icon for separate task-light/backlight controls, brightness, saved scenes, and sync actions. **Quit** stops capture and releases sessions. The optional restore setting restores static color, brightness and power, not dynamic flows or proprietary effects.
+
+<details>
+<summary>See the real Music Flow interface</summary>
+
+<img src="assets/screenshots/music-flow.png" width="1100" alt="Actual Music Flow window with system audio active, a colorful level display, palette selection and independent RGB-backlight routing">
+
+This is a captured native app window. The README cover also uses an actual Station dashboard capture; its source artwork and reproduction notes are in the [artwork guide](docs/runbooks/artwork.md).
+
+</details>
 
 ## Build from source
 
@@ -59,3 +76,7 @@ python3 scripts/research/import-presets.py .analysis-new/windows-app/Resources/C
 ```
 
 Use [REA setup](docs/research/rea-tooling.md) to reproduce the pinned local toolchain and Ghidra decompiles. The [protocol report](docs/research/device-protocol.md) records hashes, RVAs, first-party references, inferred behavior and unresolved questions. [Architecture](docs/architecture/overview.md) explains the macOS replacements and remaining platform gaps.
+
+## License
+
+[MIT](LICENSE).

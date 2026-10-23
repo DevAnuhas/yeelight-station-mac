@@ -1,0 +1,208 @@
+{
+  "name": "Yeelight Station",
+  "artifact": "Screenshot-led README and social cover",
+  "version": 1,
+  "source": "assets/artwork/readme-banner.html",
+  "canvas": {
+    "width": 2000,
+    "height": 1000,
+    "aspectRatio": "2:1",
+    "scaleMode": "One fixed artboard, uniformly scaled to the output width",
+    "exports": [
+      {
+        "purpose": "README hero",
+        "width": 1600,
+        "height": 800,
+        "scale": 0.8
+      },
+      {
+        "purpose": "Social cover",
+        "width": 1280,
+        "height": 640,
+        "scale": 0.64
+      }
+    ]
+  },
+  "direction": {
+    "style": "Quiet midnight editorial app cover",
+    "hierarchy": "Colorful app icon, large left-aligned product name, smaller for Mac line, brief tagline, one dominant actual Station window",
+    "copy": {
+      "title": [
+        "Yeelight",
+        "Station"
+      ],
+      "platform": "for Mac",
+      "tagline": "Your lights, in sync.",
+      "labels": [
+        "Native macOS",
+        "Local control"
+      ]
+    },
+    "decisions": [
+      "Use the full actual Station window with its native chrome and unaltered interface pixels.",
+      "Keep the main window straight and fully inside the artboard.",
+      "Use quiet violet, cyan, and magenta ambient color around the window, with no tint or opacity overlay on the screenshot.",
+      "Omit the optional Music Flow inset: the Station dashboard already shows it, and a second screenshot would compete with the main interface.",
+      "No invented UI, fake call-to-action, letter monogram, feature metrics, live-status claims, or synthetic device state."
+    ]
+  },
+  "palette": {
+    "background": "#0d0f15",
+    "primaryText": "#f3f3f7",
+    "secondaryText": "#989ba8",
+    "tagline": "#b1b4c1",
+    "quietLabels": "#777c8d",
+    "interfaceAccentReference": "#ac9bff",
+    "ambient": [
+      "violet",
+      "cyan",
+      "magenta"
+    ]
+  },
+  "typography": {
+    "family": "-apple-system, BlinkMacSystemFont, Helvetica Neue, Arial, sans-serif",
+    "familiesUsed": 1,
+    "title": {
+      "size": 126,
+      "weight": 650,
+      "lineHeight": 1.03,
+      "letterSpacing": -5.8
+    },
+    "platform": {
+      "size": 64,
+      "weight": 450,
+      "lineHeight": 1.15,
+      "letterSpacing": -2.5
+    },
+    "tagline": {
+      "size": 34,
+      "weight": 400,
+      "lineHeight": 1.35
+    },
+    "labels": {
+      "size": 21,
+      "weight": 450,
+      "lineHeight": 1.3
+    }
+  },
+  "layout": {
+    "leftMargin": 104,
+    "icon": {
+      "x": 104,
+      "y": 162,
+      "width": 114,
+      "height": 114
+    },
+    "title": {
+      "x": 104,
+      "y": 342,
+      "width": 630
+    },
+    "tagline": {
+      "x": 104,
+      "y": 746
+    },
+    "labels": {
+      "x": 104,
+      "y": 852
+    },
+    "stationWindow": {
+      "x": 822,
+      "y": 74,
+      "width": 1110,
+      "height": 851.755102,
+      "rotationDegrees": 0,
+      "crop": "None; retain the full supplied capture, including any existing viewport cutoff within the app",
+      "screenshotOpacity": 1,
+      "overlays": "None",
+      "rightVisualAreaShare": 1
+    }
+  },
+  "provenance": [
+    {
+      "role": "Style reference only",
+      "path": "User-supplied affectUI reference screenshot (not redistributed)",
+      "providedBy": "User",
+      "use": "Large clear left copy, quiet dark field, actual app imagery dominant on the right. No reference pixels are used in the cover.",
+      "visuallyInspected": true
+    },
+    {
+      "role": "Primary actual application screenshot",
+      "path": "assets/screenshots/station.png",
+      "providedBy": "Root agent, actual running native app capture",
+      "captureIdentity": {
+        "windowId": 145097,
+        "pid": 29965,
+        "view": "Station dashboard"
+      },
+      "observedDimensions": {
+        "width": 980,
+        "height": 752
+      },
+      "sourceStatus": "Refreshed actual capture from the auxiliary installed app, supplied by root; canonical path inspected after refresh.",
+      "use": "Only interface image used in the banner. Retain actual native titlebar and all supplied screenshot pixels.",
+      "visuallyInspected": true,
+      "editing": "No painting, compositing fake controls, state-text removal, or generative reconstruction"
+    },
+    {
+      "role": "Inspected supporting actual application screenshot, unused in cover",
+      "path": "assets/screenshots/music-flow.png",
+      "providedBy": "Root agent, existing user-started live Music Flow window",
+      "captureIdentity": {
+        "windowId": 144814,
+        "pid": 46858,
+        "view": "Music Flow"
+      },
+      "observedDimensions": {
+        "width": 1960,
+        "height": 1504
+      },
+      "use": "Inspected for actual UI palette and product context; not composited into the final cover.",
+      "visuallyInspected": true
+    },
+    {
+      "role": "New app icon",
+      "path": "assets/app-icon.png",
+      "providedBy": "Root icon agent",
+      "creationTool": "OpenAI image generation tool (image_gen.imagegen), per root workflow",
+      "observedDimensions": {
+        "width": 1254,
+        "height": 1254
+      },
+      "transparency": "Alpha",
+      "description": "Silver light bar above a cyan, violet, and magenta light beam on a colorful macOS-style icon",
+      "visuallyInspected": true,
+      "use": "Small brand icon beside the product hierarchy; no generated UI"
+    }
+  ],
+  "verification": {
+    "sourceImagesInspectedWith": "view_image",
+    "layoutReview": "Independent read-only review: use one full straight Station window, omit the secondary inset, preserve native capture details, avoid live-state claims.",
+    "renderTool": "T3 html_preview",
+    "renderStatus": "V0 checked visually with T3 html_preview at 1280px; exact contentHeight and capturedHeight are 640px. Both actual assets rendered, all native screenshot chrome retained, no further screenshot crop. Root owns final persisted exports and review.",
+    "previewChecks": {
+      "width": 1280,
+      "contentHeight": 640,
+      "capturedHeight": 640,
+      "mainScreenshotDisplayWidth": 710.4,
+      "mainScreenshotSourceWidth": 980,
+      "mainScreenshotUpscaled": false,
+      "consoleErrors": 0
+    },
+    "localImageInlining": "For T3 html_preview, replace ../app-icon.png and ../screenshots/station.png with absolute local file paths before submission.",
+    "runtime": "No external libraries, server, remote assets, animated content, viewport-height units, or html/body height:100%. Only deterministic artboard scaling uses JavaScript.",
+    "persistedExports": [
+      {
+        "path": "assets/readme-hero.png",
+        "width": 1600,
+        "height": 800
+      },
+      {
+        "path": "assets/social-preview.png",
+        "width": 1280,
+        "height": 640
+      }
+    ],
+    "rootReview": "Both PNGs rendered from actual native screenshot assets with T3 html_preview; source UI pixels are unaltered. The 16, 32, 64 and 128 pixel icon representations were visually checked on dark and light backgrounds."
+  }
+}

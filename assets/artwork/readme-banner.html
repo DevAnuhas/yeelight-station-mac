@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Yeelight Station for Mac</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif;
+      background: #0d0f15;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+
+    * { box-sizing: border-box; }
+    body { margin: 0; width: 100%; background: #0d0f15; }
+
+    /* One fixed composition, scaled as a whole. No breakpoint reflow or motion. */
+    .stage {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 2 / 1;
+      overflow: hidden;
+      isolation: isolate;
+      background: #0d0f15;
+    }
+
+    .artboard {
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 2000px;
+      height: 1000px;
+      overflow: hidden;
+      transform-origin: 0 0;
+      background:
+        radial-gradient(ellipse 690px 630px at 1420px 470px, rgba(117, 83, 207, .13), transparent 73%),
+        radial-gradient(ellipse 620px 270px at 1370px 910px, rgba(142, 54, 151, .07), transparent 75%),
+        radial-gradient(ellipse 540px 500px at 1920px 630px, rgba(48, 157, 190, .055), transparent 75%),
+        #0d0f15;
+    }
+
+    .app-icon {
+      position: absolute;
+      left: 104px;
+      top: 162px;
+      width: 114px;
+      height: 114px;
+      object-fit: contain;
+    }
+
+    .product-name {
+      position: absolute;
+      left: 104px;
+      top: 342px;
+      width: 630px;
+      margin: 0;
+      color: #f3f3f7;
+      font-size: 126px;
+      font-weight: 650;
+      line-height: 1.03;
+      letter-spacing: -5.8px;
+    }
+
+    .product-name > span { display: block; }
+
+    .product-name .platform {
+      margin-top: 24px;
+      color: #989ba8;
+      font-size: 64px;
+      font-weight: 450;
+      line-height: 1.15;
+      letter-spacing: -2.5px;
+    }
+
+    .tagline {
+      position: absolute;
+      left: 104px;
+      top: 746px;
+      margin: 0;
+      color: #b1b4c1;
+      font-size: 34px;
+      font-weight: 400;
+      line-height: 1.35;
+      letter-spacing: -.6px;
+    }
+
+    .details {
+      position: absolute;
+      left: 104px;
+      top: 852px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      margin: 0;
+      color: #777c8d;
+      font-size: 21px;
+      font-weight: 450;
+      line-height: 1.3;
+      letter-spacing: .15px;
+    }
+
+    .details .separator {
+      width: 3px;
+      height: 3px;
+      border-radius: 50%;
+      background: #5a6071;
+    }
+
+    /* The screenshot supplies the real titlebar, traffic lights, and interface.
+       Only an outer shadow is added. No overlays, color filters, or fake chrome. */
+    .station-window {
+      position: absolute;
+      left: 822px;
+      top: 74px;
+      width: 1110px;
+      margin: 0;
+      border-radius: 18px;
+      box-shadow:
+        0 30px 90px rgba(0, 0, 0, .38),
+        0 0 0 1px rgba(216, 216, 255, .075);
+    }
+
+    .station-window img {
+      display: block;
+      width: 1110px;
+      height: auto;
+      border-radius: inherit;
+    }
+  </style>
+</head>
+<body>
+  <main class="stage" aria-label="Yeelight Station for Mac. Your lights, in sync. Native macOS. Local control.">
+    <div class="artboard">
+      <img class="app-icon" src="../app-icon.png" width="114" height="114" alt="Yeelight Station app icon: a silver light bar casting cyan, violet, and pink light">
+      <h1 class="product-name">
+        <span>Yeelight</span>
+        <span>Station</span>
+        <span class="platform">for Mac</span>
+      </h1>
+      <p class="tagline">Your lights, in sync.</p>
+      <p class="details"><span>Native macOS</span><span class="separator" aria-hidden="true"></span><span>Local control</span></p>
+      <figure class="station-window">
+        <img src="../screenshots/station.png" alt="Actual Yeelight Station dashboard, showing Color Play, Music Flow, scenes, and the My Lights section">
+      </figure>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const stage = document.querySelector('.stage');
+      const artboard = document.querySelector('.artboard');
+      function scaleArtboard() {
+        const scale = stage.getBoundingClientRect().width / 2000;
+        artboard.style.transform = `scale(${scale})`;
+        stage.style.height = `${1000 * scale}px`;
+      }
+      scaleArtboard();
+      window.addEventListener('resize', scaleArtboard);
+      window.addEventListener('load', () => {
+        scaleArtboard();
+        console.info('cover-layout', JSON.stringify({
+          width: stage.getBoundingClientRect().width,
+          height: stage.getBoundingClientRect().height,
+          master: [2000, 1000],
+          images: Array.from(document.images, (image, index) => ({
+            asset: index === 0 ? 'App icon' : 'Station dashboard',
+            loaded: image.complete && image.naturalWidth > 0,
+            naturalWidth: image.naturalWidth,
+            naturalHeight: image.naturalHeight
+          }))
+        }));
+      });
+    })();
+  </script>
+</body>
+</html>

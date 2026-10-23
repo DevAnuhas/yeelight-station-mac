@@ -10,3 +10,4 @@
 - [Local-network access and diagnostics](runbooks/local-network.md)
 - [Lamp15 streaming payload audit](research/lamp-streaming.md)
 - [Signing, notarization, installation and updates](runbooks/distribution.md)
+- [App icon, real screenshots and repository artwork](runbooks/artwork.md)
