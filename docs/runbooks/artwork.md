@@ -1,6 +1,6 @@
 # App and repository artwork
 
-The README cover is a composition of real native Station window captures, with the new generated app icon and live text. The interface is not generated, repainted, or reconstructed. [Brand and composition data](../../assets/artwork/brand-spec.json) records source images, layout and verification. The user's supplied reference guides composition only; its pixels are not redistributed.
+The README cover uses the user-selected Station dashboard screenshot, with the generated app icon and live text. The interface is not generated, repainted, or reconstructed. [Brand and composition data](../../assets/artwork/brand-spec.json) records source images, layout and verification. The earlier affectUI layout reference guides composition only; its pixels are not redistributed.
 
 ## Assets
 
@@ -8,7 +8,7 @@ The README cover is a composition of real native Station window captures, with t
 | --- | --- |
 | [readme-hero.png](../../assets/readme-hero.png) | 1600 × 800 README cover |
 | [social-preview.png](../../assets/social-preview.png) | 1280 × 640 opaque social card, under 1 MB |
-| [station.png](../../assets/screenshots/station.png) | Actual Station dashboard window, native chrome retained |
+| [station.png](../../assets/screenshots/station.png) | User-selected 1179 × 946 Station dashboard screenshot, copied unchanged |
 | [music-flow.png](../../assets/screenshots/music-flow.png) | Actual user-started Music Flow window, used in the README's expandable screenshot |
 | [app-icon.png](../../assets/app-icon.png) | Unmodified generated 1254 × 1254 RGBA source master |
 | [Station.icns](../../assets/Station.icns) | Ten macOS icon representations for the application bundle |
@@ -19,9 +19,9 @@ The colorful Dock/Finder icon uses a large silver light bar and broad RGB wash. 
 
 ## Capture and render
 
-Capture the actual app window with macOS window capture, for example `screencapture -x -o -l WINDOW_ID output.png`, using the current window ID. Capture only Station, and check the result for unrelated windows or sensitive content. Do not enable screen/audio sync merely to populate a screenshot. The Music Flow capture here records the user's already-running session; the separate dashboard instance performs no control or capture writes.
+Capture the actual app window with macOS window capture, for example `screencapture -x -o -l WINDOW_ID output.png`, using the current window ID. Capture only Station, and check the result for unrelated windows or sensitive content. Do not enable screen/audio sync merely to populate a screenshot. The current dashboard source is the user's supplied screenshot. The earlier Music Flow capture records the user's already-running session; no sync was started to produce repository artwork.
 
-The HTML references the source PNGs with relative paths and can be opened locally. It uses one 2000 × 1000 logical artboard scaled uniformly to the output width. Export the whole stage at 1600 × 800 for the README and 1280 × 640 for the social card. At the README size, the actual dashboard occupies 888 pixels, below its 980-pixel source width. Keep native screenshot chrome and interface pixels intact.
+The HTML references the source PNGs with relative paths and can be opened locally. It uses one 2000 × 1000 logical artboard scaled uniformly to the output width. Export the whole stage at 1600 × 800 for the README and 1280 × 640 for the social card. At the README size, the actual dashboard occupies 888 pixels, below its 1179-pixel source width. Its original aspect ratio and complete interface are retained. The current source is the user-provided `Screenshot 2026-10-24 at 3.27.52 AM.png`; its SHA-256 is recorded in the brand data. Keep native screenshot chrome and interface pixels intact.
 
 The committed exports were produced with `html_preview`. That renderer accepts absolute local image paths, so replace the relative paths in memory before rendering. Check console image-load reports, dimensions and text clipping. The original source remains portable and relative. Screenshot exports are checked visually before replacing the committed PNGs.
 

@@ -1,7 +1,7 @@
 {
   "name": "Yeelight Station",
   "artifact": "Screenshot-led README and social cover",
-  "version": 1,
+  "version": 2,
   "source": "assets/artwork/readme-banner.html",
   "canvas": {
     "width": 2000,
@@ -108,11 +108,11 @@
     },
     "stationWindow": {
       "x": 822,
-      "y": 74,
+      "y": 55,
       "width": 1110,
-      "height": 851.755102,
+      "height": 890.6361323155216,
       "rotationDegrees": 0,
-      "crop": "None; retain the full supplied capture, including any existing viewport cutoff within the app",
+      "crop": "None; retain the full user-supplied dashboard capture at its original aspect ratio",
       "screenshotOpacity": 1,
       "overlays": "None",
       "rightVisualAreaShare": 1
@@ -129,20 +129,17 @@
     {
       "role": "Primary actual application screenshot",
       "path": "assets/screenshots/station.png",
-      "providedBy": "Root agent, actual running native app capture",
-      "captureIdentity": {
-        "windowId": 145097,
-        "pid": 29965,
-        "view": "Station dashboard"
-      },
+      "providedBy": "User-supplied actual native app screenshot",
       "observedDimensions": {
-        "width": 980,
-        "height": 752
+        "width": 1179,
+        "height": 946
       },
-      "sourceStatus": "Refreshed actual capture from the auxiliary installed app, supplied by root; canonical path inspected after refresh.",
-      "use": "Only interface image used in the banner. Retain actual native titlebar and all supplied screenshot pixels.",
+      "sourceStatus": "User-selected replacement dashboard capture; copied byte-for-byte to the canonical source asset.",
+      "use": "Only interface image used in the README and social covers. Preserve the complete supplied capture.",
       "visuallyInspected": true,
-      "editing": "No painting, compositing fake controls, state-text removal, or generative reconstruction"
+      "editing": "No painting, compositing fake controls, state-text removal, or generative reconstruction",
+      "sourceFilename": "Screenshot 2026-10-24 at 3.27.52 AM.png",
+      "sha256": "7112d30f75543b02ac63fe523eb2d79c0c4e68abbbcdc170c86ddb4592004b70"
     },
     {
       "role": "Inspected supporting actual application screenshot, unused in cover",
@@ -179,13 +176,13 @@
     "sourceImagesInspectedWith": "view_image",
     "layoutReview": "Independent read-only review: use one full straight Station window, omit the secondary inset, preserve native capture details, avoid live-state claims.",
     "renderTool": "T3 html_preview",
-    "renderStatus": "V0 checked visually with T3 html_preview at 1280px; exact contentHeight and capturedHeight are 640px. Both actual assets rendered, all native screenshot chrome retained, no further screenshot crop. Root owns final persisted exports and review.",
+    "renderStatus": "Updated README and social exports checked visually at 1600 × 800 and 1280 × 640 with T3 html_preview. Both source images loaded without console errors; the complete new dashboard fits at its original aspect ratio.",
     "previewChecks": {
       "width": 1280,
       "contentHeight": 640,
       "capturedHeight": 640,
       "mainScreenshotDisplayWidth": 710.4,
-      "mainScreenshotSourceWidth": 980,
+      "mainScreenshotSourceWidth": 1179,
       "mainScreenshotUpscaled": false,
       "consoleErrors": 0
     },
@@ -203,6 +200,6 @@
         "height": 640
       }
     ],
-    "rootReview": "Both PNGs rendered from actual native screenshot assets with T3 html_preview; source UI pixels are unaltered. The 16, 32, 64 and 128 pixel icon representations were visually checked on dark and light backgrounds."
+    "rootReview": "Both PNGs rendered with T3 html_preview using the user-selected screenshot copied byte-for-byte. The complete dashboard is visible, including independent light controls. No UI pixels were repainted or cropped."
   }
 }
