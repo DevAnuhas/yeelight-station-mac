@@ -19,6 +19,26 @@ final class DeviceEntry: ObservableObject, Identifiable {
 enum SyncMode: String { case idle, screen, music }
 
 @MainActor
+protocol StationAudioCapturing: AnyObject {
+    var isRunning: Bool { get }
+    var lastError: String? { get }
+    var failurePublisher: AnyPublisher<String?, Never> { get }
+    func availableAudioInputs() throws -> [AudioInputDevice]
+    func observeInputs(onChange: @escaping @MainActor @Sendable () -> Void) throws -> (@MainActor () -> Void)
+    func start(source: AudioSource, displayID: UInt32?, inputDeviceUID: String?,
+               onLevel: @escaping @MainActor @Sendable (Double) -> Void) async throws
+    func stop() async
+}
+
+extension AudioSyncCapture: StationAudioCapturing {
+    var failurePublisher: AnyPublisher<String?, Never> { $lastError.eraseToAnyPublisher() }
+    func observeInputs(onChange: @escaping @MainActor @Sendable () -> Void) throws -> (@MainActor () -> Void) {
+        let observer = try AudioInputTopologyObserver(onChange: onChange)
+        return { observer.invalidate() }
+    }
+}
+
+@MainActor
 final class StationModel: ObservableObject {
     @Published var devices: [DeviceEntry] = []
     @Published var discovered: [LightDevice] = []
@@ -34,10 +54,12 @@ final class StationModel: ObservableObject {
     @Published var colors: [StationCore.RGBColor] = []
     @Published var audioLevel = 0.0
     @Published var audioSource: AudioSource = .system
+    @Published var audioInputs: [AudioInputDevice] = []
+    @Published var selectedAudioInputUID: String?
     let presets: StationPresets
     let preview: Bool
     let screen = ScreenSyncCapture()
-    let audio = AudioSyncCapture()
+    let audio: any StationAudioCapturing
     private let store: ConfigurationStore
     private var persistenceEnabled = true
     private var connections: [String: LightConnection] = [:]
@@ -60,11 +82,15 @@ final class StationModel: ObservableObject {
     private var refreshTasks: [String: Task<Void, Never>] = [:]
     private let displayProvider: (@MainActor () async throws -> [CaptureDisplay])?
     private let notificationCenter: NotificationCenter
+    private let realtimeStart: @Sendable (LightConnection, LightChannel) async throws -> Void
+    private var invalidateAudioInputObservation: (@MainActor () -> Void)?
     private var displayObserver: NSObjectProtocol?
     private var displayTask: Task<Void, Never>?
     private var displayGeneration = 0
     private var began = false
     private var activeDisplayID: UInt32?
+    private var activeAudioInputUID: String?
+    private var activeAudioInputUsesDefault = false
     private var startupTask: Task<Void, Never>?
     private var adjustmentTask: Task<Void, Never>?
     private var adjustmentQueue: [AdjustmentKey] = []
@@ -75,10 +101,14 @@ final class StationModel: ObservableObject {
 
     init(store: ConfigurationStore = ConfigurationStore(), previewMode: Bool? = nil,
          displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil,
-         notificationCenter: NotificationCenter = .default) {
+         notificationCenter: NotificationCenter = .default,
+         audioCapture: (any StationAudioCapturing)? = nil,
+         realtimeStart: @escaping @Sendable (LightConnection, LightChannel) async throws -> Void = { try await $0.startRealtime(channel: $1) }) {
         self.store = store
         self.displayProvider = displayProvider
         self.notificationCenter = notificationCenter
+        self.audio = audioCapture ?? AudioSyncCapture()
+        self.realtimeStart = realtimeStart
         preview = previewMode ?? ProcessInfo.processInfo.arguments.contains("--demo")
         do { presets = try StationPresets.load() }
         catch { fatalError("Cannot load bundled Station presets: \(error)") }
@@ -113,13 +143,13 @@ final class StationModel: ObservableObject {
 
     private func observeCaptureFailures() {
         screen.$lastError.compactMap { $0 }.sink { [weak self] message in
-            guard let self, self.mode == .screen else { return }
+            guard let self, !self.shuttingDown, self.mode == .screen else { return }
             self.error = message
             let ticket = self.generation
             Task { [weak self] in if self?.generation == ticket { await self?.stopSync() } }
         }.store(in: &subscriptions)
-        audio.$lastError.compactMap { $0 }.sink { [weak self] message in
-            guard let self, self.mode == .music else { return }
+        audio.failurePublisher.compactMap { $0 }.sink { [weak self] message in
+            guard let self, !self.shuttingDown, self.mode == .music else { return }
             self.error = message
             let ticket = self.generation
             Task { [weak self] in if self?.generation == ticket { await self?.stopSync() } }
@@ -133,12 +163,29 @@ final class StationModel: ObservableObject {
     var active: Bool { mode != .idle }
     var isShuttingDown: Bool { shuttingDown }
     var selectedDisplay: CaptureDisplay? { displays.first { $0.id == config.displayID } }
-    func requiresDisplay(for target: SyncMode) -> Bool { target == .screen || (target == .music && audioSource == .system) }
+    var selectedAudioInput: AudioInputDevice? { audioInput(uid: selectedAudioInputUID) }
+    private var systemAudioDisplay: CaptureDisplay? { displays.first { $0.id == CGMainDisplayID() } ?? displays.first }
+    private func audioInput(uid: String?) -> AudioInputDevice? {
+        if let uid { return audioInputs.first { $0.id == uid } }
+        return audioInputs.first { $0.isDefault }
+    }
+    func requiresDisplay(for target: SyncMode) -> Bool { target == .screen }
     func displayReady(for target: SyncMode, displayID: UInt32? = nil) -> Bool {
-        !requiresDisplay(for: target) || displays.contains { $0.id == (displayID ?? config.displayID) }
+        if target == .music { return audioSource != .system || systemAudioDisplay != nil }
+        return !requiresDisplay(for: target) || displays.contains { $0.id == (displayID ?? config.displayID) }
     }
     func canStart(_ target: SyncMode, displayID: UInt32? = nil) -> Bool {
-        target != .idle && target != mode && !transitioning && !controlling && !scanning && !preview && !shuttingDown && !outputs.isEmpty && displayReady(for: target, displayID: displayID)
+        canStart(target, displayID: displayID, audioSource: audioSource, inputDeviceUID: selectedAudioInputUID)
+    }
+    func canStart(_ target: SyncMode, displayID: UInt32? = nil, audioSource source: AudioSource, inputDeviceUID: String? = nil) -> Bool {
+        guard target != .idle, target != mode, !transitioning, !controlling, !scanning, !preview, !shuttingDown, !outputs.isEmpty else { return false }
+        if target == .music { return source == .system ? systemAudioDisplay != nil : audioInput(uid: inputDeviceUID) != nil }
+        return displayReady(for: target, displayID: displayID)
+    }
+    @discardableResult func selectAudioInput(uid: String?) -> Bool {
+        guard !shuttingDown, audioInput(uid: uid) != nil else { return false }
+        selectedAudioInputUID = uid
+        return true
     }
     @discardableResult func selectDisplay(_ id: UInt32) -> Bool {
         guard !shuttingDown, displays.contains(where: { $0.id == id }) else { return false }
@@ -176,6 +223,10 @@ final class StationModel: ObservableObject {
             Task { @MainActor [weak self] in await self?.loadDisplays() }
         }
         displayTask = Task { [weak self] in await self?.loadDisplays() }
+        loadAudioInputs()
+        do {
+            invalidateAudioInputObservation = try audio.observeInputs { [weak self] in self?.loadAudioInputs() }
+        } catch { if !shuttingDown { self.error = error.localizedDescription } }
         guard !preview else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -443,7 +494,34 @@ final class StationModel: ObservableObject {
         do { try await updateDisplays() }
         catch { if !shuttingDown && !(error is CancellationError) { self.error = error.localizedDescription } }
     }
-    private func updateDisplays(stopUnavailableCapture: Bool = true) async throws {
+    func loadAudioInputs() {
+        do { try updateAudioInputs() }
+        catch { if !shuttingDown && !(error is CancellationError) { self.error = error.localizedDescription } }
+    }
+    private func updateAudioInputs(stopUnavailableCapture: Bool = true) throws {
+        guard !shuttingDown, !Task.isCancelled else { throw CancellationError() }
+        do { audioInputs = try audio.availableAudioInputs() }
+        catch {
+            audioInputs = []
+            if stopUnavailableCapture { stopUnavailableAudioInput() }
+            throw error
+        }
+        if stopUnavailableCapture { stopUnavailableAudioInput() }
+    }
+    private func stopUnavailableAudioInput() {
+        guard let activeAudioInputUID else { return }
+        if !audioInputs.contains(where: { $0.id == activeAudioInputUID }) {
+            error = "The audio input used for Music Flow disconnected. Choose an available audio input and start again."
+        } else if activeAudioInputUsesDefault, audioInput(uid: nil)?.id != activeAudioInputUID {
+            error = "The default audio input changed. Start Music Flow again to use the new default."
+        } else { return }
+        let ticket = generation
+        Task { [weak self] in
+            guard let self, self.generation == ticket, !self.shuttingDown else { return }
+            await self.stopSync()
+        }
+    }
+    private func updateDisplays(stopUnavailableCapture: Bool = true, reconcileSelection: Bool = true) async throws {
         guard !shuttingDown else { throw CancellationError() }
         displayGeneration += 1; let ticket = displayGeneration
         let available: [CaptureDisplay]
@@ -457,13 +535,13 @@ final class StationModel: ObservableObject {
         }
         guard !shuttingDown, !Task.isCancelled, ticket == displayGeneration else { throw CancellationError() }
         displays = available
-        if selectedDisplay == nil {
+        if reconcileSelection, selectedDisplay == nil {
             let old = config.displayID
             config.displayID = displays.first?.id
             if old != config.displayID { save() }
         }
         if stopUnavailableCapture, let activeDisplayID, !displays.contains(where: { $0.id == activeDisplayID }) {
-            error = "The display used for sync disconnected. Choose a display and start again."
+            error = mode == .music ? "The display needed by System Audio disconnected. Start Music Flow again when a display is available." : "The display used for sync disconnected. Choose a display and start again."
             await stopSync()
         }
     }
@@ -473,68 +551,107 @@ final class StationModel: ObservableObject {
         }
         // Freeze user intent before the first suspension. Refresh may reconcile a
         // stale picker, but this Start must never silently capture its replacement.
-        let displayID = config.displayID, source = audioSource
+        let displayID = target == .screen ? config.displayID : nil, source = audioSource
+        let usesDefaultAudioInput = target == .music && source == .microphone && selectedAudioInputUID == nil
+        let inputDeviceUID: String?
+        if target == .music, source == .microphone {
+            do {
+                try updateAudioInputs(stopUnavailableCapture: false)
+                guard let selected = selectedAudioInput else {
+                    throw StationError.unavailable("Choose an available audio input before starting Music Flow.")
+                }
+                inputDeviceUID = selected.id
+            } catch { if !shuttingDown && !(error is CancellationError) { self.error = error.localizedDescription }; return }
+        } else { inputDeviceUID = nil }
         transitioning = true
-        let operation = Task { [self] in await performStart(target, displayID: displayID, source: source) }
+        let operation = Task { [self] in
+            await performStart(target, displayID: displayID, source: source, inputDeviceUID: inputDeviceUID, usesDefaultAudioInput: usesDefaultAudioInput)
+        }
         startupTask = operation
         await operation.value
         startupTask = nil; transitioning = false
     }
-    private func performStart(_ target: SyncMode, displayID: UInt32?, source: AudioSource) async {
+    private func performStart(_ target: SyncMode, displayID: UInt32?, source: AudioSource, inputDeviceUID: String?, usesDefaultAudioInput: Bool) async {
         error = nil
         let needsDisplay = target == .screen || (target == .music && source == .system)
-        func validateDisplay() throws {
-            if needsDisplay && !displays.contains(where: { $0.id == displayID }) {
-                throw StationError.unavailable("Choose an available display before starting sync.")
+        var captureDisplayID = displayID
+        func validateSources() throws {
+            if needsDisplay && !displays.contains(where: { $0.id == captureDisplayID }) {
+                let message = target == .music ? "System Audio is unavailable because no capture display is available." : "Choose an available display before starting sync."
+                throw StationError.unavailable(message)
+            }
+            if target == .music, source == .microphone {
+                try updateAudioInputs(stopUnavailableCapture: false)
+                guard let inputDeviceUID, audioInputs.contains(where: { $0.id == inputDeviceUID }) else {
+                    throw StationError.unavailable("The selected audio input is no longer available. Choose an available audio input and start again.")
+                }
+                if usesDefaultAudioInput, audioInput(uid: nil)?.id != inputDeviceUID {
+                    throw StationError.unavailable("The default audio input changed. Start Music Flow again to use the new default.")
+                }
             }
         }
         let assignments = outputs
         guard !assignments.isEmpty else { error = "Add a light and enable it in Sync routing first."; return }
         var beganStartup = false
         do {
-            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            if needsDisplay {
+                try await updateDisplays(stopUnavailableCapture: false, reconcileSelection: target == .screen)
+                if target == .music { captureDisplayID = systemAudioDisplay?.id }
+            }
+            try validateSources()
             try Task.checkCancellation()
             // A scene or Start is a barrier after all previously accepted edits,
             // including their read-back. No new edits enter while transitioning.
             await adjustmentTask?.value
             try Task.checkCancellation()
-            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false, reconcileSelection: target == .screen) }
+            try validateSources()
             guard !shuttingDown else { throw CancellationError() }
             await stopSync(cancelStartup: false)
             try Task.checkCancellation()
             guard !shuttingDown else { throw CancellationError() }
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false, reconcileSelection: target == .screen) }
+            try validateSources()
             generation += 1; let ticket = generation
-            activeDisplayID = needsDisplay ? displayID : nil
+            activeDisplayID = needsDisplay ? captureDisplayID : nil
+            activeAudioInputUID = target == .music ? inputDeviceUID : nil
+            activeAudioInputUsesDefault = usesDefaultAudioInput
             beganStartup = true
             for a in assignments {
                 guard let entry = devices.first(where: { $0.id == a.deviceID }) else { continue }
                 try ensureCurrent(ticket)
+                try validateSources()
                 let revision = adjustmentRevision
                 let current = try await connection(entry).properties(includeCached: false)
                 try ensureCurrent(ticket)
+                try validateSources()
                 mergeProperties(current, into: entry, observedAt: revision)
                 restoreStates.append(SavedLightState(deviceID: a.deviceID, channel: a.channel, properties: current))
                 activeAssignments.append(a)
-                try await connection(entry).startRealtime(channel: a.channel)
+                try await realtimeStart(connection(entry), a.channel)
                 try ensureCurrent(ticket)
+                try validateSources()
             }
-            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false, reconcileSelection: target == .screen) }
+            try validateSources()
             try ensureCurrent(ticket)
-            if target == .screen, let displayID {
-                try await screen.start(displayID: displayID, zones: layout.zones, interval: config.frameInterval) { [weak self] colors in
-                    guard let self, self.generation == ticket else { return }; self.colors = colors; self.queueColors(colors)
+            if target == .screen, let captureDisplayID {
+                try await screen.start(displayID: captureDisplayID, zones: layout.zones, interval: config.frameInterval) { [weak self] colors in
+                    guard let self, !self.shuttingDown, self.generation == ticket else { return }; self.colors = colors; self.queueColors(colors)
                 }
             } else {
-                try await audio.start(source: source, displayID: displayID) { [weak self] level in
-                    guard let self, self.generation == ticket else { return }; self.receiveAudio(level)
+                try await audio.start(source: source, displayID: captureDisplayID, inputDeviceUID: inputDeviceUID) { [weak self] level in
+                    guard let self, !self.shuttingDown, self.generation == ticket else { return }; self.receiveAudio(level)
                 }
             }
             try ensureCurrent(ticket)
+            try validateSources()
             for a in assignments {
                 if let entry = devices.first(where: { $0.id == a.deviceID }) {
                     let command = LightCommands.power(true, channel: a.channel)
                     _ = try await connection(entry).request(method: command.0, params: command.1)
                     try ensureCurrent(ticket)
+                    try validateSources()
                 }
             }
             guard target == .screen ? screen.isRunning : audio.isRunning else {
@@ -551,10 +668,13 @@ final class StationModel: ObservableObject {
         if let activeDisplayID, !displays.contains(where: { $0.id == activeDisplayID }) {
             throw StationError.unavailable("The display used for sync disconnected.")
         }
+        if let activeAudioInputUID, !audioInputs.contains(where: { $0.id == activeAudioInputUID }) {
+            throw StationError.unavailable("The audio input used for Music Flow disconnected.")
+        }
     }
     func stopSync(cancelStartup: Bool = true) async {
         if cancelStartup { startupTask?.cancel() }
-        generation += 1; mode = .idle; pendingColors = nil; activeDisplayID = nil
+        generation += 1; mode = .idle; pendingColors = nil; activeDisplayID = nil; activeAudioInputUID = nil; activeAudioInputUsesDefault = false
         let oldTask = outputTask; outputTask = nil; oldTask?.cancel()
         let old = activeAssignments; activeAssignments = []
         let restore = restoreStates; restoreStates = []; audioLevel = 0
@@ -569,7 +689,7 @@ final class StationModel: ObservableObject {
                     guard let entry = devices.first(where: { $0.id == state.deviceID }), let existing = connections[state.deviceID] else { continue }
                     do {
                         for cmd in restoreCommands(state) { _ = try await existing.request(method: cmd.0, params: cmd.1) }
-                    } catch { self.error = "Stopped sync; couldn’t restore \(entry.device.displayName): \(error.localizedDescription)" }
+                    } catch { if !shuttingDown { self.error = "Stopped sync; couldn’t restore \(entry.device.displayName): \(error.localizedDescription)" } }
                 }
             }
         }
@@ -590,6 +710,7 @@ final class StationModel: ObservableObject {
                     let index = max(0, min(frame.count - 1, a.zone))
                     do { try await self.connection(e).sendRealtime(colors: [frame[index]], channel: a.channel, brightness: Int(self.config.syncBrightness)) }
                     catch {
+                        guard !self.shuttingDown, !Task.isCancelled, self.generation == ticket else { return }
                         self.error = "Sync stopped: \(e.device.displayName): \(error.localizedDescription)"
                         // Defer stopping until this output task has returned; stopSync awaits it.
                         Task { [weak self] in if self?.generation == ticket { await self?.stopSync() } }
@@ -626,6 +747,7 @@ final class StationModel: ObservableObject {
     func shutdown() async {
         shuttingDown = true; pollTask?.cancel(); displayTask?.cancel(); startupTask?.cancel(); adjustmentTask?.cancel()
         if let displayObserver { notificationCenter.removeObserver(displayObserver); self.displayObserver = nil }
+        invalidateAudioInputObservation?(); invalidateAudioInputObservation = nil
         adjustmentQueue.removeAll(); queuedAdjustments.removeAll(); desiredAdjustments.removeAll()
         for entry in devices { recomposeProperties(entry) }
         for operation in controls.values { operation.cancel() }

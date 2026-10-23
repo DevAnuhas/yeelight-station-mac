@@ -36,24 +36,31 @@ final class StationModelRegressionTests: XCTestCase {
         XCTAssertEqual(source.calls, calls, "Shutdown must detach topology observation.")
     }
 
-    func testDisplayEligibilityValidatesCandidatesAndMicrophoneNeedsNoDisplay() async throws {
+    func testSourceEligibilityUsesMusicInputsAndOnlyColorPlayUsesSelectedDisplay() async throws {
         let fixture = try makeFixture(displayProvider: { [] })
         let model = fixture.model
         model.displays = DisplaySource.displays
         model.config.displayID = nil
         XCTAssertFalse(model.canStart(.screen))
-        XCTAssertFalse(model.canStart(.music))
+        XCTAssertTrue(model.canStart(.music), "System Audio chooses an internal display independently of Color Play selection.")
         XCTAssertTrue(model.canStart(.screen, displayID: 22))
         XCTAssertTrue(model.canStart(.music, displayID: 22))
         XCTAssertFalse(model.canStart(.screen, displayID: 999))
         XCTAssertFalse(model.selectDisplay(999))
         XCTAssertNil(model.config.displayID)
         model.audioSource = .microphone
+        model.loadAudioInputs()
         model.displays = []
         XCTAssertFalse(model.requiresDisplay(for: .music))
         XCTAssertTrue(model.displayReady(for: .music))
         XCTAssertTrue(model.canStart(.music))
+        XCTAssertTrue(model.canStart(.music, audioSource: .microphone, inputDeviceUID: "usb"))
+        XCTAssertFalse(model.canStart(.music, audioSource: .microphone, inputDeviceUID: "missing"))
+        XCTAssertFalse(model.canStart(.music, audioSource: .system))
         model.displays = DisplaySource.displays
+        XCTAssertTrue(model.canStart(.music, audioSource: .system), "Menu eligibility must allow changing the current microphone source to System Audio.")
+        model.audioSource = .system
+        XCTAssertTrue(model.canStart(.music, audioSource: .microphone, inputDeviceUID: "usb"), "Menu eligibility must allow selecting a microphone while the current source is System Audio.")
         XCTAssertTrue(model.selectDisplay(11))
         await model.shutdown()
         XCTAssertTrue(model.isShuttingDown)
@@ -61,6 +68,227 @@ final class StationModelRegressionTests: XCTestCase {
         XCTAssertEqual(model.config.displayID, 11)
         XCTAssertFalse(model.canStart(.music))
         XCTAssertTrue(fixture.lights[0].requests.isEmpty)
+    }
+
+    func testBeginAndInputTopologyOnlyInspectInventoryAndKeepExplicitSelection() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(deviceCount: 0, displayProvider: { [] }, audioCapture: audio)
+        let model = fixture.model
+        XCTAssertTrue(model.audioInputs.isEmpty)
+        XCTAssertEqual(audio.enumerations, 0)
+        model.begin(); model.begin()
+        XCTAssertEqual(model.audioInputs.map(\.name), ["Built-in Microphone", "USB Interface", "Virtual Input"])
+        XCTAssertEqual(audio.enumerations, 1)
+        XCTAssertEqual(audio.observations, 1)
+        XCTAssertNil(model.selectedAudioInputUID)
+        XCTAssertEqual(model.selectedAudioInput?.id, "built-in")
+        XCTAssertTrue(model.selectAudioInput(uid: "usb"))
+        audio.inputs.reverse(); audio.topologyChanged?()
+        XCTAssertEqual(model.selectedAudioInput?.id, "usb")
+        audio.inputs.removeAll { $0.id == "usb" }; audio.topologyChanged?()
+        XCTAssertEqual(model.selectedAudioInputUID, "usb", "An unplugged explicit choice must stay stale rather than become the default mic.")
+        XCTAssertNil(model.selectedAudioInput)
+        XCTAssertFalse(model.selectAudioInput(uid: "missing"))
+        XCTAssertEqual(model.selectedAudioInputUID, "usb")
+        XCTAssertTrue(model.selectAudioInput(uid: nil))
+        XCTAssertEqual(model.selectedAudioInput?.id, "built-in")
+        XCTAssertTrue(audio.starts.isEmpty)
+        XCTAssertEqual(audio.stops, 0)
+        XCTAssertFalse(model.screen.isRunning)
+        let saved = try fixture.store.load()
+        XCTAssertNil(saved.displayID)
+        let lateCallback = audio.topologyChanged
+        await model.shutdown()
+        XCTAssertEqual(audio.invalidations, 1)
+        let calls = audio.enumerations
+        lateCallback?()
+        XCTAssertEqual(audio.enumerations, calls)
+        XCTAssertFalse(model.selectAudioInput(uid: "built-in"))
+    }
+
+    func testSystemAudioStartIgnoresMissingOrStaleColorPlaySelectionAtCaptureSeam() async throws {
+        for selectedDisplayID in [nil, 999, 22] as [UInt32?] {
+            let audio = AudioCaptureStub()
+            let fixture = try makeFixture(displayProvider: { DisplaySource.displays }, audioCapture: audio, allowRealtime: true)
+            let model = fixture.model
+            model.config.displayID = selectedDisplayID
+            model.config.restoreOnStop = false
+            await model.start(.music)
+            XCTAssertEqual(model.mode, .music)
+            let request = try XCTUnwrap(audio.starts.first)
+            XCTAssertEqual(request.source, .system)
+            XCTAssertEqual(request.displayID, 11)
+            XCTAssertNil(request.inputDeviceUID)
+            XCTAssertEqual(model.config.displayID, selectedDisplayID, "Music Flow must not read or rewrite Color Play selection.")
+            XCTAssertFalse(model.screen.isRunning)
+            XCTAssertTrue(audio.isRunning)
+        }
+    }
+
+    func testDefaultAndExplicitMicrophonesPassTheirResolvedUIDAndNeverReadDisplays() async throws {
+        for uid in [nil, "usb", "virtual"] as [String?] {
+            let audio = AudioCaptureStub(), displays = DisplaySource()
+            displays.fails = true
+            let fixture = try makeFixture(displayProvider: { try await displays.fetch() }, audioCapture: audio, allowRealtime: true)
+            let model = fixture.model
+            model.audioSource = .microphone
+            model.config.displayID = 999
+            model.config.restoreOnStop = false
+            model.loadAudioInputs()
+            XCTAssertTrue(model.selectAudioInput(uid: uid))
+            await model.start(.music)
+            XCTAssertEqual(model.mode, .music)
+            let request = try XCTUnwrap(audio.starts.first)
+            XCTAssertEqual(request.source, .microphone)
+            XCTAssertEqual(request.inputDeviceUID, uid ?? "built-in")
+            XCTAssertNil(request.displayID)
+            XCTAssertEqual(displays.calls, 0)
+            XCTAssertEqual(model.selectedAudioInputUID, uid, "Resolving default input must not turn it into an explicit saved choice.")
+        }
+    }
+
+    func testStaleOrAbsentMicrophoneRejectsBeforeStoppingPreviousModeOrDeviceTraffic() async throws {
+        for explicit in [false, true] {
+            let audio = AudioCaptureStub()
+            let fixture = try makeFixture(audioCapture: audio)
+            let model = fixture.model
+            model.loadAudioInputs()
+            if explicit { XCTAssertTrue(model.selectAudioInput(uid: "usb")); audio.inputs.removeAll { $0.id == "usb" } }
+            else { audio.inputs = [] }
+            model.audioSource = .microphone
+            model.mode = .screen
+            await model.start(.music)
+            XCTAssertEqual(model.mode, .screen)
+            XCTAssertTrue(fixture.lights[0].requests.isEmpty)
+            XCTAssertEqual(fixture.lights[0].connectionCount, 0)
+            XCTAssertTrue(audio.starts.isEmpty)
+            XCTAssertEqual(audio.realtimeStarts, 0)
+            XCTAssertEqual(audio.stops, 0)
+            XCTAssertNotNil(model.error)
+        }
+    }
+
+    func testStartFreezesExplicitMicrophoneAndSourceAcrossAdjustmentBarrier() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(holdFirstMethod: "bg_set_bright", reflectsControls: true, audioCapture: audio, allowRealtime: true)
+        let model = fixture.model, light = fixture.lights[0]
+        model.audioSource = .microphone
+        model.loadAudioInputs(); XCTAssertTrue(model.selectAudioInput(uid: "built-in"))
+        model.config.restoreOnStop = false
+        model.setBrightness(model.devices[0], channel: .background, value: 42)
+        try await waitUntil("adjustment waits for ACK") { light.requests.count == 1 }
+        let start = Task { await model.start(.music) }
+        try await waitUntil("microphone start waits at barrier") { model.transitioning && audio.enumerations >= 2 }
+        model.audioSource = .system
+        model.selectedAudioInputUID = "virtual"
+        audio.inputs = [AudioInputDevice(id: "built-in", name: "Built-in Microphone", isDefault: false),
+                        AudioInputDevice(id: "usb", name: "USB Interface", isDefault: true)]
+        light.acknowledgeHeldRequest()
+        await start.value
+        XCTAssertEqual(model.mode, .music)
+        let request = try XCTUnwrap(audio.starts.first)
+        XCTAssertEqual(request.source, .microphone)
+        XCTAssertEqual(request.inputDeviceUID, "built-in", "A default or selection change must not redirect an explicitly accepted Start.")
+        XCTAssertNil(request.displayID)
+    }
+
+    func testDefaultMicrophoneChangeAcrossAdjustmentBarrierRejectsBeforeStartupNetwork() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(holdFirstMethod: "bg_set_bright", reflectsControls: true, audioCapture: audio, allowRealtime: true)
+        let model = fixture.model, light = fixture.lights[0]
+        model.audioSource = .microphone
+        model.setBrightness(model.devices[0], channel: .background, value: 42)
+        try await waitUntil("adjustment waits for ACK") { light.requests.count == 1 }
+        let start = Task { await model.start(.music) }
+        try await waitUntil("default microphone start waits at barrier") { model.transitioning && audio.enumerations >= 2 }
+        audio.inputs = [AudioInputDevice(id: "built-in", name: "Built-in Microphone", isDefault: false),
+                        AudioInputDevice(id: "usb", name: "USB Interface", isDefault: true)]
+        light.acknowledgeHeldRequest()
+        await start.value
+        XCTAssertEqual(light.requests.map(\.method), ["bg_set_bright", "get_prop"])
+        XCTAssertTrue(audio.starts.isEmpty)
+        XCTAssertEqual(audio.realtimeStarts, 0)
+        XCTAssertEqual(audio.stops, 0)
+        XCTAssertEqual(model.mode, .idle)
+        XCTAssertTrue(try XCTUnwrap(model.error).contains("default audio input changed"))
+    }
+
+    func testUnpluggedFrozenMicrophoneAfterAdjustmentRejectsBeforeStartupNetwork() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(holdFirstMethod: "bg_set_bright", reflectsControls: true, audioCapture: audio, allowRealtime: true)
+        let model = fixture.model, light = fixture.lights[0]
+        model.audioSource = .microphone
+        model.loadAudioInputs(); XCTAssertTrue(model.selectAudioInput(uid: "usb"))
+        model.setBrightness(model.devices[0], channel: .background, value: 42)
+        try await waitUntil("adjustment waits for ACK") { light.requests.count == 1 }
+        let calls = audio.enumerations
+        let start = Task { await model.start(.music) }
+        try await waitUntil("microphone start waits at barrier") { model.transitioning && audio.enumerations >= calls + 2 }
+        audio.inputs.removeAll { $0.id == "usb" }
+        light.acknowledgeHeldRequest()
+        await start.value
+        XCTAssertEqual(light.requests.map(\.method), ["bg_set_bright", "get_prop"])
+        XCTAssertTrue(audio.starts.isEmpty)
+        XCTAssertEqual(audio.realtimeStarts, 0)
+        XCTAssertEqual(audio.stops, 0)
+        XCTAssertEqual(model.mode, .idle)
+    }
+
+    func testMicrophoneUnplugDuringSnapshotRejectsBeforeRealtimeOrCapture() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(holdFirstMethod: "get_prop", audioCapture: audio, allowRealtime: true)
+        let model = fixture.model, light = fixture.lights[0]
+        model.audioSource = .microphone; model.config.restoreOnStop = false
+        model.loadAudioInputs(); XCTAssertTrue(model.selectAudioInput(uid: "usb"))
+        let start = Task { await model.start(.music) }
+        try await waitUntil("startup snapshot waits for ACK") { light.requests.count == 1 }
+        audio.inputs.removeAll { $0.id == "usb" }
+        light.acknowledgeHeldRequest()
+        await start.value
+        XCTAssertEqual(light.requests.map(\.method), ["get_prop"])
+        XCTAssertTrue(audio.starts.isEmpty)
+        XCTAssertEqual(audio.realtimeStarts, 0)
+        XCTAssertEqual(model.mode, .idle)
+        XCTAssertEqual(model.selectedAudioInputUID, "usb")
+    }
+
+    func testActiveExplicitMicrophoneStaysPinnedAcrossDefaultChangeThenStopsWhenItDisappears() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(displayProvider: { [] }, audioCapture: audio, allowRealtime: true)
+        let model = fixture.model
+        model.audioSource = .microphone; model.config.restoreOnStop = false
+        model.loadAudioInputs(); XCTAssertTrue(model.selectAudioInput(uid: "built-in"))
+        await model.start(.music)
+        XCTAssertEqual(model.mode, .music)
+        model.begin()
+        audio.inputs = [AudioInputDevice(id: "built-in", name: "Built-in Microphone", isDefault: false),
+                        AudioInputDevice(id: "usb", name: "USB Interface", isDefault: true)]
+        audio.topologyChanged?()
+        XCTAssertEqual(model.mode, .music)
+        XCTAssertEqual(audio.starts.count, 1)
+        audio.inputs.removeAll { $0.id == "built-in" }
+        audio.topologyChanged?()
+        try await waitUntil("disconnected microphone stops") { model.mode == .idle && !audio.isRunning }
+        XCTAssertEqual(audio.starts.count, 1, "Disconnection must never restart capture on the new default.")
+        XCTAssertNotNil(model.error)
+    }
+
+    func testActiveDefaultMicrophoneStopsWhenDefaultChangesWithoutLosingOldDevice() async throws {
+        let audio = AudioCaptureStub()
+        let fixture = try makeFixture(displayProvider: { [] }, audioCapture: audio, allowRealtime: true)
+        let model = fixture.model
+        model.audioSource = .microphone; model.config.restoreOnStop = false
+        await model.start(.music)
+        XCTAssertEqual(model.mode, .music)
+        model.begin()
+        audio.inputs = [AudioInputDevice(id: "built-in", name: "Built-in Microphone", isDefault: false),
+                        AudioInputDevice(id: "usb", name: "USB Interface", isDefault: true)]
+        audio.topologyChanged?()
+        try await waitUntil("default route change stops capture") { model.mode == .idle && !audio.isRunning }
+        XCTAssertTrue(try XCTUnwrap(model.error).contains("default audio input changed"))
+        XCTAssertEqual(audio.starts.count, 1)
+        XCTAssertNil(model.selectedAudioInputUID)
+        XCTAssertEqual(model.selectedAudioInput?.id, "usb")
     }
 
     func testStaleDisplayAndEnumerationFailureRejectStartBeforeStoppingOrDeviceTraffic() async throws {
@@ -579,7 +807,8 @@ final class StationModelRegressionTests: XCTestCase {
                              propertyOverride: (String, String)? = nil, reflectsControls: Bool = false,
                              displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil,
                              notificationCenter: NotificationCenter = .default,
-                             omittedProperties: Set<String> = []) throws -> Fixture {
+                             omittedProperties: Set<String> = [],
+                             audioCapture: AudioCaptureStub? = nil, allowRealtime: Bool = false) throws -> Fixture {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("station-app-regression-\(UUID().uuidString)", isDirectory: true)
         let store = ConfigurationStore(url: directory.appendingPathComponent("station.json"))
@@ -598,7 +827,13 @@ final class StationModelRegressionTests: XCTestCase {
                                    properties: properties)
             }
             try store.save(config)
-            let model = StationModel(store: store, previewMode: false, displayProvider: displayProvider, notificationCenter: notificationCenter)
+            let audio = audioCapture ?? AudioCaptureStub()
+            let model = StationModel(store: store, previewMode: false, displayProvider: displayProvider,
+                                     notificationCenter: notificationCenter, audioCapture: audio,
+                                     realtimeStart: { connection, channel in
+                                         if allowRealtime { await audio.beginRealtime() }
+                                         else { try await connection.startRealtime(channel: channel) }
+                                     })
             let fixture = Fixture(model: model, store: store, lights: lights)
             addTeardownBlock {
                 await model.shutdown()
@@ -656,6 +891,41 @@ final class StationModelRegressionTests: XCTestCase {
     }
 
     private enum WaitTimeout: Error { case expired }
+
+    private final class AudioCaptureStub: StationAudioCapturing {
+        struct StartRequest {
+            let source: AudioSource
+            let displayID: UInt32?
+            let inputDeviceUID: String?
+        }
+        @Published var lastError: String?
+        var failurePublisher: AnyPublisher<String?, Never> { $lastError.eraseToAnyPublisher() }
+        var isRunning = false
+        var inputs = [AudioInputDevice(id: "built-in", name: "Built-in Microphone", isDefault: true),
+                      AudioInputDevice(id: "usb", name: "USB Interface", isDefault: false),
+                      AudioInputDevice(id: "virtual", name: "Virtual Input", isDefault: false)]
+        var starts: [StartRequest] = []
+        var stops = 0
+        var realtimeStarts = 0
+        var enumerations = 0
+        var observations = 0
+        var invalidations = 0
+        var topologyChanged: (@MainActor @Sendable () -> Void)?
+
+        func availableAudioInputs() throws -> [AudioInputDevice] { enumerations += 1; return inputs }
+        func beginRealtime() { realtimeStarts += 1 }
+        func observeInputs(onChange: @escaping @MainActor @Sendable () -> Void) throws -> (@MainActor () -> Void) {
+            observations += 1
+            topologyChanged = onChange
+            return { [weak self] in self?.invalidations += 1; self?.topologyChanged = nil }
+        }
+        func start(source: AudioSource, displayID: UInt32?, inputDeviceUID: String?,
+                   onLevel: @escaping @MainActor @Sendable (Double) -> Void) async throws {
+            starts.append(StartRequest(source: source, displayID: displayID, inputDeviceUID: inputDeviceUID))
+            isRunning = true
+        }
+        func stop() async { stops += 1; isRunning = false }
+    }
 
     private final class DisplaySource {
         static let displays = [CaptureDisplay(id: 11, name: "Built-in", width: 1920, height: 1080),
