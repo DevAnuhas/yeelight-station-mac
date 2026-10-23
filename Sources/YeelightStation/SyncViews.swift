@@ -52,7 +52,6 @@ struct SyncDisplayPicker: View {
                 Button { Task { await model.loadDisplays() } } label: { Image(systemName: "arrow.clockwise") }
                     .accessibilityLabel("Refresh displays")
             }
-            Text("Shared by Color Play and Music Flow with system audio.").font(.caption).foregroundStyle(.secondary)
         }.disabled(model.active || model.transitioning)
     }
 }
@@ -86,8 +85,14 @@ struct SyncStartControl: View {
 
     private var validationMessage: String? {
         if model.preview { return "Connect a real light to start live sync." }
-        if model.requiresDisplay(for: mode), !model.displayReady(for: mode) {
+        if mode == .screen, !model.displayReady(for: mode) {
             return model.displays.isEmpty ? "Connect a display, then refresh the display list." : "Choose a display before starting \(name)."
+        }
+        if mode == .music, model.audioSource == .microphone, model.selectedAudioInput == nil {
+            return model.audioInputs.isEmpty ? "Connect a microphone or choose system audio." : "Choose an available microphone before starting Music Flow."
+        }
+        if mode == .music, model.audioSource == .system, !model.displayReady(for: mode) {
+            return "System audio capture is currently unavailable."
         }
         if model.outputs.isEmpty { return "Add a light and enable it in Sync routing to start." }
         return nil
@@ -132,13 +137,13 @@ struct MusicFlowView: View {
                         Capsule().fill(color).frame(width: 10, height: max(7, model.audioLevel * (45 + f * 105)))
                     }
                 }.frame(height: 155, alignment: .bottom)
-                Text(model.mode == .music ? "Listening to \(model.audioSource == .system ? "system audio" : "your microphone")" : "Start Music Flow to see your audio level").font(.callout).foregroundStyle(.secondary)
+                Text(model.mode == .music ? "Listening to \(model.audioSource == .system ? "system audio" : model.selectedAudioInput?.name ?? "your microphone")" : "Start Music Flow to see your audio level").font(.callout).foregroundStyle(.secondary)
             }.padding(30).frame(maxWidth: .infinity).background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 16))
             HStack(alignment: .top, spacing: 18) {
                 GroupBox("Sound & color") {
                     VStack(alignment: .leading, spacing: 16) {
                         Picker("Audio source", selection: $model.audioSource) { Text("System audio").tag(AudioSource.system); Text("Microphone").tag(AudioSource.microphone) }.disabled(model.active || model.transitioning)
-                        if model.audioSource == .system { SyncDisplayPicker() }
+                        if model.audioSource == .microphone { AudioInputPicker() }
                         Picker("Palette", selection: $model.config.paletteID) {
                             ForEach(model.presets.palettes) { Text("\($0.group) / \($0.name)").tag($0.id) }
                         }
@@ -157,6 +162,30 @@ struct MusicFlowView: View {
             }
             SyncRoutingView()
         }.onChange(of: model.config.paletteID) { _, _ in model.save() }
+    }
+}
+
+struct AudioInputPicker: View {
+    @EnvironmentObject private var model: StationModel
+
+    var body: some View {
+        Picker("Microphone", selection: Binding<String?>(
+            get: { model.selectedAudioInputUID },
+            set: { _ = model.selectAudioInput(uid: $0) }
+        )) {
+            Text(defaultTitle).tag(Optional<String>.none)
+                .disabled(!model.audioInputs.contains(where: \.isDefault))
+            ForEach(model.audioInputs) { input in
+                Text(input.name).tag(Optional(input.id))
+            }
+            if let uid = model.selectedAudioInputUID, !model.audioInputs.contains(where: { $0.id == uid }) {
+                Text("Selected microphone unavailable").tag(Optional(uid)).disabled(true)
+            }
+        }.disabled(model.active || model.transitioning)
+    }
+
+    private var defaultTitle: String {
+        model.audioInputs.first(where: \.isDefault).map { "Default · \($0.name)" } ?? "No default microphone available"
     }
 }
 

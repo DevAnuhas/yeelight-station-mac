@@ -101,6 +101,12 @@ final class StationControlSnapshotTests: XCTestCase {
                 window.close()
             }
         }
+        model.audioSource = .microphone
+        model.audioInputs = [.init(id: "snapshot-microphone", name: "Studio USB Microphone", isDefault: true)]
+        let microphone = NSHostingView(rootView: StationView(initialPage: .music).environmentObject(model).preferredColorScheme(.dark))
+        microphone.frame = CGRect(x: 0, y: 0, width: 980, height: 700)
+        try render(microphone, to: directory.appendingPathComponent("music-flow-microphone-980.png"))
+
         // Setting synthetic presentation state does not start a sync session.
         model.mode = .screen
         let active = NSHostingView(rootView: StationView(initialPage: .lights).environmentObject(model).preferredColorScheme(.dark))

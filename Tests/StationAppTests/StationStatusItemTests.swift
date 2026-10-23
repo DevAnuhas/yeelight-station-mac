@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import XCTest
 import StationCapture
 import StationCore
@@ -79,169 +80,255 @@ final class StationStatusItemTests: XCTestCase {
         XCTAssertTrue(StationMenuState(devices: [], transitioning: true).allowsStop)
     }
 
-    func testDisplayStartsRequireAnExactCurrentOrExplicitSelection() {
+    func testColorPlayRequiresAnExactCurrentOrExplicitDisplay() {
         let displays = [display(), display(id: 2)]
-        for mode in [SyncMode.screen, .music] {
-            for state in [StationMenuState(devices: []),
-                          StationMenuState(devices: [], displays: displays),
-                          StationMenuState(devices: [], displays: displays, selectedDisplayID: 99)] {
-                XCTAssertNil(StationMenuAction.start(mode).startRequest(in: state))
-            }
-            let selected = StationMenuState(devices: [], displays: displays, selectedDisplayID: 1)
-            XCTAssertEqual(StationMenuAction.start(mode).startRequest(in: selected), .init(mode: mode, displayID: 1))
-            XCTAssertEqual(StationMenuAction.start(mode, displayID: 2).startRequest(in: selected), .init(mode: mode, displayID: 2))
-            XCTAssertNil(StationMenuAction.start(mode, displayID: 99).startRequest(in: selected), "A stale explicit choice must never fall back to the current display.")
-            let missing = StationMenuState(devices: [], displays: displays)
-            XCTAssertEqual(StationMenuAction.start(mode, displayID: 2).startRequest(in: missing), .init(mode: mode, displayID: 2), "A submenu choice establishes selection even when none was saved.")
-        }
-    }
-
-    func testMicrophoneIsDisplayIndependentAndRejectsAnOldSystemAudioIntent() {
-        for displays in [[], [display(), display(id: 2)]] {
-            let state = StationMenuState(devices: [], displays: displays, selectedDisplayID: 99, audioSource: .microphone)
-            XCTAssertEqual(StationMenuAction.start(.music, audioSource: .microphone).startRequest(in: state), .init(mode: .music, displayID: nil))
+        for state in [StationMenuState(devices: []),
+                      StationMenuState(devices: [], displays: displays),
+                      StationMenuState(devices: [], displays: displays, selectedDisplayID: 99)] {
             XCTAssertNil(StationMenuAction.start(.screen).startRequest(in: state))
-            XCTAssertNil(StationMenuAction.start(.music, displayID: 2, audioSource: .system).startRequest(in: state))
         }
+        let selected = StationMenuState(devices: [], displays: displays, selectedDisplayID: 1)
+        XCTAssertEqual(StationMenuAction.start(.screen).startRequest(in: selected), .init(mode: .screen, displayID: 1))
+        XCTAssertEqual(StationMenuAction.start(.screen, displayID: 2).startRequest(in: selected), .init(mode: .screen, displayID: 2))
+        XCTAssertNil(StationMenuAction.start(.screen, displayID: 99).startRequest(in: selected))
+        let missing = StationMenuState(devices: [], displays: displays)
+        XCTAssertEqual(StationMenuAction.start(.screen, displayID: 2).startRequest(in: missing), .init(mode: .screen, displayID: 2))
+        XCTAssertNil(StationMenuAction.start(.screen, audioSource: .system).startRequest(in: selected))
     }
 
     @MainActor
-    func testBothMultiDisplayMenusExposeExactChoicesAndTheSharedSelection() throws {
+    func testColorPlayMenuKeepsDisplayLabelsIDsAndCheckmarks() throws {
         let displays = [display(), display(id: 2, name: "Studio Display", width: 5120, height: 2880)]
-        for mode in [SyncMode.screen, .music] {
-            let state = StationMenuState(devices: [], displays: displays, selectedDisplayID: 2)
-            let item = StationSyncMenu.startItem(mode, state: state)
-            XCTAssertEqual(item.title, mode == .screen ? "Start Color Play" : "Start Music Flow")
-            let choices = try XCTUnwrap(item.submenu?.items)
-            XCTAssertTrue(item.isEnabled)
-            XCTAssertNil(item.representedObject)
-            XCTAssertEqual(choices.map(\.title), ["Built-in Display · 2560 × 1600", "Studio Display · 5120 × 2880"])
-            XCTAssertEqual(choices.map(\.state), [.off, .on])
-            XCTAssertTrue(choices.allSatisfy(\.isEnabled))
-            for (choice, display) in zip(choices, displays) {
-                let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
-                XCTAssertEqual(action, .start(mode, displayID: display.id, audioSource: mode == .music ? .system : nil))
-                XCTAssertEqual(action.startRequest(in: state), .init(mode: mode, displayID: display.id))
-            }
-            let missing = StationMenuState(devices: [], displays: displays)
-            let unselected = try XCTUnwrap(StationSyncMenu.startItem(mode, state: missing).submenu)
-            XCTAssertTrue(unselected.items.allSatisfy { $0.isEnabled && $0.state == .off })
-        }
-    }
-
-    @MainActor
-    func testSingleDisplayAndMicrophoneRemainDirectActions() throws {
-        for mode in [SyncMode.screen, .music] {
-            let state = StationMenuState(devices: [], displays: [display()])
-            let item = StationSyncMenu.startItem(mode, state: state)
-            XCTAssertNil(item.submenu)
-            XCTAssertTrue(item.isEnabled)
-            let action = try XCTUnwrap(item.representedObject as? StationMenuAction)
-            XCTAssertEqual(action.startRequest(in: state), .init(mode: mode, displayID: 1))
-        }
-        let mic = StationMenuState(devices: [], displays: [display(), display(id: 2)], audioSource: .microphone)
-        let item = StationSyncMenu.startItem(.music, state: mic)
-        XCTAssertNil(item.submenu)
+        let state = StationMenuState(devices: [], displays: displays, selectedDisplayID: 2)
+        let item = StationSyncMenu.startItem(.screen, state: state)
+        XCTAssertEqual(item.title, "Start Color Play")
+        let choices = try XCTUnwrap(item.submenu?.items)
         XCTAssertTrue(item.isEnabled)
-        XCTAssertEqual(item.representedObject as? StationMenuAction, .start(.music, audioSource: .microphone))
-        for mode in [SyncMode.screen, .music] {
-            XCTAssertFalse(StationSyncMenu.startItem(mode, state: StationMenuState(devices: [])).isEnabled)
+        XCTAssertNil(item.representedObject)
+        XCTAssertEqual(choices.map(\.title), ["Built-in Display · 2560 × 1600", "Studio Display · 5120 × 2880"])
+        XCTAssertEqual(choices.map(\.state), [.off, .on])
+        for (choice, display) in zip(choices, displays) {
+            XCTAssertTrue(choice.isEnabled)
+            let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+            XCTAssertEqual(action, .start(.screen, displayID: display.id))
+            XCTAssertEqual(action.startRequest(in: state), .init(mode: .screen, displayID: display.id))
+        }
+        let single = StationSyncMenu.startItem(.screen, state: StationMenuState(devices: [], displays: [display()]))
+        XCTAssertNil(single.submenu)
+        XCTAssertTrue(single.isEnabled)
+        XCTAssertEqual(single.representedObject as? StationMenuAction, .start(.screen, displayID: 1))
+        XCTAssertFalse(StationSyncMenu.startItem(.screen, state: StationMenuState(devices: [])).isEnabled)
+    }
+
+    @MainActor
+    func testMusicMenuAlwaysListsSystemAudioAndNamedInputsWithoutDisplays() throws {
+        let inputs = audioInputs()
+        for displays in [[], [display()], [display(), display(id: 2, name: "Studio Display")]] {
+            let state = StationMenuState(devices: [], displays: displays, selectedDisplayID: 99, audioInputs: inputs)
+            let item = StationSyncMenu.startItem(.music, state: state)
+            let choices = try XCTUnwrap(item.submenu?.items)
+            XCTAssertEqual(item.title, "Start Music Flow")
+            XCTAssertNil(item.representedObject)
+            XCTAssertTrue(item.isEnabled, "An available microphone works without a display.")
+            XCTAssertEqual(choices.map(\.title), ["System Audio", "Mac Microphone", "USB Audio"])
+            XCTAssertEqual(choices.map(\.state), [.on, .off, .off])
+            XCTAssertEqual(choices.map(\.isEnabled), [!displays.isEmpty, true, true])
+            for (index, choice) in choices.enumerated() {
+                let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
+                let expected: StationMenuAction = index == 0 ? .start(.music, audioSource: .system)
+                    : .start(.music, audioSource: .microphone, inputDeviceUID: inputs[index - 1].id)
+                XCTAssertEqual(action, expected)
+                XCTAssertNil(action.startRequest(in: state)?.displayID)
+            }
+        }
+        let unavailable = StationSyncMenu.startItem(.music, state: StationMenuState(devices: []))
+        let choices = try XCTUnwrap(unavailable.submenu?.items)
+        XCTAssertEqual(choices.map(\.title), ["System Audio", "No audio input devices available"])
+        XCTAssertFalse(unavailable.isEnabled)
+        XCTAssertTrue(choices.allSatisfy { !$0.isEnabled })
+    }
+
+    @MainActor
+    func testMusicCheckmarksResolveUIDsAndDefaultWithoutGuessingFromNames() throws {
+        let first = AudioInputDevice(id: "first", name: "System Audio", isDefault: true)
+        let second = AudioInputDevice(id: "second", name: "System Audio", isDefault: false)
+        for (uid, expected) in [(nil, [false, true, false]), ("second", [false, false, true]), ("missing", [false, false, false])] as [(String?, [Bool])] {
+            let state = StationMenuState(devices: [], audioSource: .microphone, audioInputs: [first, second], selectedAudioInputUID: uid)
+            let choices = try XCTUnwrap(StationSyncMenu.startItem(.music, state: state).submenu?.items)
+            XCTAssertEqual(choices.map { $0.state == .on }, expected)
+            XCTAssertEqual(choices[1].representedObject as? StationMenuAction, .start(.music, audioSource: .microphone, inputDeviceUID: "first"))
+            XCTAssertEqual(choices[2].representedObject as? StationMenuAction, .start(.music, audioSource: .microphone, inputDeviceUID: "second"))
+        }
+        let changedDefault = [AudioInputDevice(id: "second", name: "Renamed USB Audio", isDefault: true),
+                              AudioInputDevice(id: "first", name: "Mac Microphone", isDefault: false)]
+        let following = StationMenuState(devices: [], audioSource: .microphone, audioInputs: changedDefault)
+        let pinned = StationMenuState(devices: [], audioSource: .microphone, audioInputs: changedDefault, selectedAudioInputUID: "first")
+        XCTAssertEqual(try XCTUnwrap(StationSyncMenu.startItem(.music, state: following).submenu).items.map(\.state), [.off, .on, .off])
+        XCTAssertEqual(try XCTUnwrap(StationSyncMenu.startItem(.music, state: pinned).submenu).items.map(\.state), [.off, .off, .on])
+    }
+
+    func testMusicIntentsSwitchSourcesUseExactInputsAndRejectDisplayPayloads() {
+        let state = StationMenuState(devices: [], displays: [display()], selectedDisplayID: 99, audioInputs: audioInputs())
+        let microphone = StationMenuAction.start(.music, audioSource: .microphone, inputDeviceUID: "usb")
+        XCTAssertEqual(microphone.startRequest(in: state), .init(mode: .music, displayID: nil, audioSource: .microphone, inputDeviceUID: "usb"))
+        let micState = StationMenuState(devices: [], displays: [display()], audioSource: .microphone, audioInputs: audioInputs(), selectedAudioInputUID: "usb")
+        XCTAssertEqual(StationMenuAction.start(.music, audioSource: .system).startRequest(in: micState), .init(mode: .music, displayID: nil, audioSource: .system))
+        XCTAssertEqual(StationMenuAction.start(.music).startRequest(in: micState), .init(mode: .music, displayID: nil, audioSource: .microphone, inputDeviceUID: "usb"))
+        XCTAssertEqual(StationMenuAction.start(.music, audioSource: .microphone).startRequest(in: micState), .init(mode: .music, displayID: nil, audioSource: .microphone))
+        XCTAssertNil(StationMenuAction.start(.music, displayID: 1, audioSource: .system).startRequest(in: state))
+        XCTAssertNil(StationMenuAction.start(.music, audioSource: .system, inputDeviceUID: "usb").startRequest(in: state))
+        XCTAssertNil(StationMenuAction.start(.music, inputDeviceUID: "usb").startRequest(in: state))
+        XCTAssertNil(StationMenuAction.start(.music, audioSource: .microphone, inputDeviceUID: "missing").startRequest(in: state))
+    }
+
+    @MainActor
+    func testEverySyncStartTooltipIsNilRecursivelyIncludingUnavailableItems() {
+        let states = [StationMenuState(devices: []),
+                      StationMenuState(devices: [], displays: [display()]),
+                      StationMenuState(devices: [], displays: [display(), display(id: 2)], audioInputs: audioInputs()),
+                      StationMenuState(devices: [], transitioning: true, displays: [display(), display(id: 2)], audioInputs: audioInputs()),
+                      StationMenuState(devices: [], preview: true, displays: [display()], audioInputs: audioInputs()),
+                      StationMenuState(devices: [], mode: .music, audioInputs: audioInputs())]
+        for state in states {
+            for mode in [SyncMode.screen, .music] {
+                for terminating in [false, true] {
+                    assertNoTooltips(StationSyncMenu.startItem(mode, state: state, isTerminating: terminating))
+                }
+            }
         }
     }
 
     @MainActor
-    func testMenuInspectionDoesNotEnumerateCaptureOrPersist() throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("station-menu-inspection-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = ConfigurationStore(url: directory.appendingPathComponent("station.json"))
-        var config = StationConfiguration(); config.devices = [makeLight()]; config.displayID = 2
-        try store.save(config)
-        let before = try Data(contentsOf: store.url)
-        var enumerationCount = 0
-        let model = StationModel(store: store, previewMode: false, displayProvider: {
-            enumerationCount += 1; return []
-        }, notificationCenter: NotificationCenter())
-        model.displays = [display(), display(id: 2)]
-        for mode in [SyncMode.screen, .music] {
-            XCTAssertNotNil(StationSyncMenu.startItem(mode, state: StationMenuState(model: model)).submenu)
+    func testSavedMenuActionsRevalidateUnplugAndEveryCriticalState() throws {
+        let displays = [display(), display(id: 2)]
+        let inputs = audioInputs()
+        let initial = StationMenuState(devices: [], displays: displays, selectedDisplayID: 2, audioInputs: inputs)
+        let screen = try XCTUnwrap(StationSyncMenu.startItem(.screen, state: initial).submenu?.items.last?.representedObject as? StationMenuAction)
+        let musicChoices = try XCTUnwrap(StationSyncMenu.startItem(.music, state: initial).submenu?.items)
+        let musicActions = try musicChoices.map { try XCTUnwrap($0.representedObject as? StationMenuAction) }
+        for (mode, action) in [(.screen, screen)] + musicActions.map({ (SyncMode.music, $0) }) {
+            for changed in [StationMenuState(devices: [], mode: mode, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], transitioning: true, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], controlling: true, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], scanning: true, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], preview: true, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], hasOutputs: false, displays: displays, selectedDisplayID: 2, audioInputs: inputs),
+                            StationMenuState(devices: [], displays: displays, selectedDisplayID: 2, audioInputs: inputs, shuttingDown: true)] {
+                XCTAssertNil(action.startRequest(in: changed))
+            }
+            XCTAssertNil(action.startRequest(in: initial, isTerminating: true))
+            XCTAssertFalse(StationSyncMenu.startItem(mode, state: initial, isTerminating: true).isEnabled)
         }
-        XCTAssertEqual(enumerationCount, 0)
-        XCTAssertEqual(model.config.displayID, 2)
+        XCTAssertNil(screen.startRequest(in: StationMenuState(devices: [], displays: [display()], selectedDisplayID: 1)))
+        XCTAssertNil(musicActions[0].startRequest(in: StationMenuState(devices: [], audioInputs: inputs)))
+        XCTAssertNil(musicActions[2].startRequest(in: StationMenuState(devices: [], displays: displays, audioInputs: [inputs[0]])))
+    }
+
+    @MainActor
+    func testMenuInspectionDoesNotEnumeratePersistObserveOrCapture() throws {
+        let audio = MenuAudioCapture()
+        var displayLookups = 0
+        let (model, store) = try menuModel(audio: audio, displayProvider: { displayLookups += 1; return [] })
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let before = try Data(contentsOf: store.url)
+        for _ in 0..<3 {
+            for mode in [SyncMode.screen, .music] {
+                XCTAssertNotNil(StationSyncMenu.startItem(mode, state: StationMenuState(model: model)).submenu)
+            }
+        }
+        XCTAssertEqual(displayLookups, 0)
+        XCTAssertEqual(audio.enumerations, 0)
+        XCTAssertEqual(audio.observations, 0)
+        XCTAssertEqual(audio.starts, 0)
         XCTAssertEqual(try Data(contentsOf: store.url), before)
+        XCTAssertEqual(model.config.displayID, 2)
+        XCTAssertNil(model.selectedAudioInputUID)
         XCTAssertFalse(model.screen.isRunning)
         XCTAssertFalse(model.audio.isRunning)
         XCTAssertFalse(model.transitioning)
     }
 
     @MainActor
-    func testPreviouslyEnabledMenuActionsRevalidateUnplugOperationsAndShutdown() throws {
-        let displays = [display(), display(id: 2)]
-        for mode in [SyncMode.screen, .music] {
-            let initial = StationMenuState(devices: [], displays: displays, selectedDisplayID: 2)
-            let menu = StationSyncMenu.startItem(mode, state: initial)
-            let choice = try XCTUnwrap(menu.submenu?.items.last)
-            XCTAssertTrue(choice.isEnabled)
-            let action = try XCTUnwrap(choice.representedObject as? StationMenuAction)
-            for changed in [StationMenuState(devices: [], displays: [display()], selectedDisplayID: 1),
-                            StationMenuState(devices: [], mode: mode, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], transitioning: true, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], controlling: true, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], scanning: true, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], preview: true, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], hasOutputs: false, displays: displays, selectedDisplayID: 2),
-                            StationMenuState(devices: [], displays: displays, selectedDisplayID: 2, shuttingDown: true)] {
-                XCTAssertNil(action.startRequest(in: changed))
-            }
-            XCTAssertNil(action.startRequest(in: initial, isTerminating: true))
-            XCTAssertFalse(StationSyncMenu.startItem(mode, state: initial, isTerminating: true).isEnabled)
-        }
-        let micAction = StationMenuAction.start(.music, audioSource: .microphone)
-        XCTAssertNil(micAction.startRequest(in: StationMenuState(devices: [], displays: displays, selectedDisplayID: 2)))
-        XCTAssertTrue(StationMenuState(devices: [], mode: .screen, controlling: true).allowsStop)
-        XCTAssertTrue(StationMenuState(devices: [], transitioning: true).allowsStop)
+    func testMenuPreparationPinsExactUIDSwitchesSourceAndLeavesDisplayAndStoreAlone() throws {
+        let audio = MenuAudioCapture()
+        let (model, store) = try menuModel(audio: audio)
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let before = try Data(contentsOf: store.url)
+        let choices = try XCTUnwrap(StationSyncMenu.startItem(.music, state: StationMenuState(model: model)).submenu?.items)
+        let microphone = try XCTUnwrap(choices[2].representedObject as? StationMenuAction)
+        XCTAssertEqual(microphone.prepareStart(on: model), .music)
+        XCTAssertEqual(model.audioSource, .microphone)
+        XCTAssertEqual(model.selectedAudioInputUID, "usb")
+        XCTAssertEqual(model.selectedAudioInput?.id, "usb")
+        let system = try XCTUnwrap(choices[0].representedObject as? StationMenuAction)
+        XCTAssertEqual(system.prepareStart(on: model), .music)
+        XCTAssertEqual(model.audioSource, .system)
+        XCTAssertEqual(model.selectedAudioInputUID, "usb", "Switching to System Audio keeps the prior microphone choice.")
+        let defaultMic = try XCTUnwrap(choices[1].representedObject as? StationMenuAction)
+        XCTAssertEqual(defaultMic.prepareStart(on: model), .music)
+        XCTAssertEqual(model.selectedAudioInputUID, "mac", "Clicking the named default device pins its UID.")
+        XCTAssertEqual(model.config.displayID, 2)
+        XCTAssertEqual(try Data(contentsOf: store.url), before)
+        XCTAssertEqual(audio.enumerations, 0)
+        XCTAssertEqual(audio.starts, 0)
+        XCTAssertFalse(model.screen.isRunning)
     }
 
     @MainActor
-    func testRealStartPreparationPersistsSelectionWithoutCaptureAndRejectsStaleActions() async throws {
-        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("station-menu-\(UUID().uuidString)")
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let store = ConfigurationStore(url: directory.appendingPathComponent("station.json"))
-        var config = StationConfiguration(); config.devices = [makeLight()]
-        try store.save(config)
-        let model = StationModel(store: store, previewMode: false)
-        model.displays = [display(), display(id: 2)]
-        for mode in [SyncMode.screen, .music] {
-            model.config.displayID = nil
-            let item = StationSyncMenu.startItem(mode, state: StationMenuState(model: model))
-            let action = try XCTUnwrap(item.submenu?.items.last?.representedObject as? StationMenuAction)
-            XCTAssertEqual(action.prepareStart(on: model), mode)
-            XCTAssertEqual(model.selectedDisplay?.id, 2)
-            XCTAssertEqual(try store.load().displayID, 2)
-            model.displays = [display()]
-            model.config.displayID = 1
-            XCTAssertNil(action.prepareStart(on: model))
-            XCTAssertEqual(model.config.displayID, 1)
-            model.displays = [display(), display(id: 2)]
+    func testStaleAudioPreparationDoesNotChangeAnySelectionOrPersist() async throws {
+        let audio = MenuAudioCapture()
+        let (model, store) = try menuModel(audio: audio)
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        let choices = try XCTUnwrap(StationSyncMenu.startItem(.music, state: StationMenuState(model: model)).submenu?.items)
+        let stale = try XCTUnwrap(choices[2].representedObject as? StationMenuAction)
+        let system = try XCTUnwrap(choices[0].representedObject as? StationMenuAction)
+        model.audioInputs.removeAll { $0.id == "usb" }
+        model.selectedAudioInputUID = "mac"
+        let before = try Data(contentsOf: store.url)
+        XCTAssertNil(stale.prepareStart(on: model))
+        XCTAssertEqual(model.audioSource, .system)
+        XCTAssertEqual(model.selectedAudioInputUID, "mac")
+        model.audioSource = .microphone; model.displays = []
+        XCTAssertNil(system.prepareStart(on: model))
+        XCTAssertEqual(model.audioSource, .microphone)
+        XCTAssertEqual(model.selectedAudioInputUID, "mac")
+        model.displays = [display()]
+        let current = StationMenuAction.start(.music, audioSource: .system)
+        for gate in 0..<5 {
+            model.transitioning = gate == 0; model.controlling = gate == 1; model.scanning = gate == 2
+            model.mode = gate == 3 ? .music : .idle
+            XCTAssertNil(current.prepareStart(on: model, isTerminating: gate == 4))
+            XCTAssertEqual(model.selectedAudioInputUID, "mac")
+            XCTAssertEqual(model.audioSource, .microphone)
         }
-        model.audioSource = .microphone; model.displays = []; model.config.displayID = 99
-        let microphone = StationMenuAction.start(.music, audioSource: .microphone)
-        XCTAssertEqual(microphone.prepareStart(on: model), .music)
-        XCTAssertEqual(model.config.displayID, 99, "Microphone starts must not change a shared display choice.")
-        model.audioSource = .system
-        XCTAssertNil(microphone.prepareStart(on: model))
-        model.displays = [display(), display(id: 2)]; model.config.displayID = 1
-        let action = StationMenuAction.start(.screen, displayID: 2)
-        model.transitioning = true
-        XCTAssertNil(action.prepareStart(on: model))
-        XCTAssertEqual(model.config.displayID, 1)
-        model.transitioning = false
-        XCTAssertNil(action.prepareStart(on: model, isTerminating: true))
+        model.transitioning = false; model.controlling = false; model.scanning = false; model.mode = .idle
         await model.shutdown()
+        XCTAssertNil(current.prepareStart(on: model))
+        XCTAssertEqual(model.selectedAudioInputUID, "mac")
+        XCTAssertEqual(model.config.displayID, 2)
+        XCTAssertEqual(try Data(contentsOf: store.url), before)
+        XCTAssertEqual(audio.starts, 0)
+        XCTAssertFalse(model.screen.isRunning)
+        XCTAssertNil(model.error)
+    }
+
+    @MainActor
+    func testColorPreparationPersistsExactDisplayAndRejectsStaleSelection() throws {
+        let audio = MenuAudioCapture()
+        let (model, store) = try menuModel(audio: audio)
+        defer { try? FileManager.default.removeItem(at: store.url.deletingLastPathComponent()) }
+        model.config.displayID = nil
+        let item = StationSyncMenu.startItem(.screen, state: StationMenuState(model: model))
+        let action = try XCTUnwrap(item.submenu?.items.last?.representedObject as? StationMenuAction)
+        XCTAssertEqual(action.prepareStart(on: model), .screen)
+        XCTAssertEqual(model.selectedDisplay?.id, 2)
+        XCTAssertEqual(try store.load().displayID, 2)
+        model.displays = [display()]; model.config.displayID = 1
         XCTAssertNil(action.prepareStart(on: model))
         XCTAssertEqual(model.config.displayID, 1)
+        XCTAssertNil(action.prepareStart(on: model, isTerminating: true))
+        XCTAssertEqual(audio.starts, 0)
         XCTAssertFalse(model.screen.isRunning)
-        XCTAssertFalse(model.audio.isRunning)
-        XCTAssertNil(model.error)
     }
 
     func testBackgroundStatusIncludesConnectionCountAndFullFailure() {
@@ -291,10 +378,56 @@ final class StationStatusItemTests: XCTestCase {
         CaptureDisplay(id: id, name: name, width: width, height: height)
     }
 
+    private func audioInputs() -> [AudioInputDevice] {
+        [AudioInputDevice(id: "mac", name: "Mac Microphone", isDefault: true),
+         AudioInputDevice(id: "usb", name: "USB Audio", isDefault: false)]
+    }
+
+    @MainActor
+    private func assertNoTooltips(_ item: NSMenuItem, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertNil(item.toolTip, item.title, file: file, line: line)
+        for child in item.submenu?.items ?? [] { assertNoTooltips(child, file: file, line: line) }
+    }
+
+    @MainActor
+    private func menuModel(audio: MenuAudioCapture,
+                           displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil) throws -> (StationModel, ConfigurationStore) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("station-menu-\(UUID().uuidString)")
+        let store = ConfigurationStore(url: directory.appendingPathComponent("station.json"))
+        var config = StationConfiguration(); config.devices = [makeLight()]; config.displayID = 2
+        try store.save(config)
+        let model = StationModel(store: store, previewMode: false, displayProvider: displayProvider,
+                                 notificationCenter: NotificationCenter(), audioCapture: audio)
+        model.displays = [display(), display(id: 2)]
+        model.audioInputs = audioInputs()
+        return (model, store)
+    }
+
     private func event(id: AEEventID, property: OSType? = nil) -> NSAppleEventDescriptor {
         let event = NSAppleEventDescriptor(eventClass: kCoreEventClass, eventID: id, targetDescriptor: nil,
                                           returnID: AEReturnID(kAutoGenerateReturnID), transactionID: AETransactionID(kAnyTransactionID))
         if let property { event.setParam(NSAppleEventDescriptor(enumCode: property), forKeyword: keyAEPropData) }
         return event
     }
+}
+
+@MainActor
+private final class MenuAudioCapture: StationAudioCapturing {
+    var isRunning = false
+    let lastError: String? = nil
+    var failurePublisher: AnyPublisher<String?, Never> { Just(nil).eraseToAnyPublisher() }
+    var enumerations = 0
+    var observations = 0
+    var starts = 0
+
+    func availableAudioInputs() throws -> [AudioInputDevice] { enumerations += 1; return [] }
+    func observeInputs(onChange: @escaping @MainActor @Sendable () -> Void) throws -> (@MainActor () -> Void) {
+        observations += 1; return {}
+    }
+    func start(source: AudioSource, displayID: UInt32?, inputDeviceUID: String?,
+               onLevel: @escaping @MainActor @Sendable (Double) -> Void) async throws {
+        starts += 1
+        XCTFail("Menu inspection and preparation must not start capture.")
+    }
+    func stop() async { isRunning = false }
 }
