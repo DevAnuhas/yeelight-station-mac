@@ -10,10 +10,10 @@ extension StationCore.RGBColor {
 }
 
 enum StationPage: String, CaseIterable, Identifiable {
-    case station = "Station", lights = "My Lights", screen = "Color Play", music = "Music Flow", scenes = "Scenes", settings = "Settings"
+    case station = "Station", lights = "My Lights", screen = "Color Play", music = "Music Flow", scenes = "Scenes", automations = "Automations", settings = "Settings"
     var id: Self { self }
     var symbol: String {
-        switch self { case .station: return "square.grid.2x2"; case .lights: return "lightbulb.2"; case .screen: return "display"; case .music: return "waveform"; case .scenes: return "sparkles"; case .settings: return "gearshape" }
+        switch self { case .station: return "square.grid.2x2"; case .lights: return "lightbulb.2"; case .screen: return "display"; case .music: return "waveform"; case .scenes: return "sparkles"; case .automations: return "clock.arrow.circlepath"; case .settings: return "gearshape" }
     }
     var subtitle: String {
         switch self {
@@ -22,6 +22,7 @@ enum StationPage: String, CaseIterable, Identifiable {
         case .screen: return "Bring the colors on your screen into your room."
         case .music: return "Let your lights follow the sound."
         case .scenes: return "A different atmosphere, one click away."
+        case .automations: return "A daily rhythm for each light."
         case .settings: return "Make Station fit your day."
         }
     }
@@ -47,6 +48,7 @@ struct StationView: View {
                     Section("WORKSPACE") {
                         Label(StationPage.station.rawValue, systemImage: StationPage.station.symbol).tag(StationPage.station)
                         HStack { Label("My Lights", systemImage: "lightbulb.2"); Spacer(); Text("\(model.devices.count)").foregroundStyle(.secondary) }.tag(StationPage.lights)
+                        Label(StationPage.automations.rawValue, systemImage: StationPage.automations.symbol).tag(StationPage.automations)
                     }
                     Section("SYNC & SCENES") {
                         ForEach([StationPage.screen, .music, .scenes]) { item in Label(item.rawValue, systemImage: item.symbol).tag(item) }
@@ -90,6 +92,7 @@ struct StationView: View {
                         case .screen: ColorPlayView()
                         case .music: MusicFlowView()
                         case .scenes: ScenesView()
+                        case .automations: AutomationsView()
                         case .settings: SettingsView()
                         }
                     }.padding(28).frame(maxWidth: 1180, alignment: .leading).frame(maxWidth: .infinity)
@@ -197,6 +200,7 @@ struct DeviceCard: View {
     @State private var remove = false
     @State private var rename = false
     @State private var newName = ""
+    @State private var settingsSection: DeviceSettingsSection?
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(spacing: 12) {
@@ -206,10 +210,14 @@ struct DeviceCard: View {
                 if entry.busy { ProgressView().controlSize(.small) }
                 Label(entry.online ? "Online" : "Offline", systemImage: "circle.fill").font(.caption).foregroundStyle(entry.online ? .green : .secondary)
                 Menu {
+                    Button("Device settings…") { settingsSection = .information }
+                    Button("Sleep timer…") { settingsSection = .timer }
+                    Divider()
                     Button("Refresh connection") { Task { await model.refresh(entry) } }
                     Button("Rename locally") { newName = entry.device.displayName; rename = true }
                     Divider(); Button("Remove light", role: .destructive) { remove = true }
                 } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 25)
+                    .accessibilityLabel("Options for \(entry.device.displayName)")
             }
             if let error = entry.error { Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled) }
             HStack(alignment: .top, spacing: 22) {
@@ -217,6 +225,9 @@ struct DeviceCard: View {
                 if entry.device.hasBackground { Divider(); ChannelControl(entry: entry, channel: .background) }
             }.disabled(model.transitioning || model.controlling || model.scanning || model.isShuttingDown)
         }.padding(20).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.065)))
+        .sheet(item: $settingsSection) { section in
+            DeviceSettingsView(entry: entry, initialSection: section).environmentObject(model)
+        }
         .confirmationDialog("Remove \(entry.device.displayName)?", isPresented: $remove) { Button("Remove Light", role: .destructive) { Task { await model.remove(entry) } } } message: { Text("This removes it from Station on this Mac.") }
         .alert("Rename light on this Mac", isPresented: $rename) {
             TextField("Name", text: $newName)
