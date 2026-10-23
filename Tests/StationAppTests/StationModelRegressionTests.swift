@@ -619,7 +619,7 @@ final class StationModelRegressionTests: XCTestCase {
         await refresh.value
         XCTAssertTrue(entry.busy, "Refresh completion must not release a command's reservation.")
         await shutdownWithinDeadline(model)
-        await first.value; await second.value
+        _ = await first.value; await second.value
         XCTAssertEqual(light.requests.map(\.method), ["get_prop", "bg_set_power"])
     }
 

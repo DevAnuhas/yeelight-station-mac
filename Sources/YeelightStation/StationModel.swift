@@ -98,17 +98,31 @@ final class StationModel: ObservableObject {
     private var desiredAdjustments: [AdjustmentKey: Adjustment] = [:]
     private var adjustmentRevision = 0
     private var propertyRevisions: [AdjustmentKey: Int] = [:]
+    private let automationClock: @MainActor () -> Date
+    private let automationCalendar: Calendar
+    private var automationCursor: Date
+    private var automationTask: Task<Void, Never>?
+    private var automationTickRunning = false
+    private var automationArmedAt: [UUID: Date] = [:]
+    private var automationSleeping = false
+    private var automationEpoch = 0
+    private var automationWorkspaceObservers: [NSObjectProtocol] = []
 
     init(store: ConfigurationStore = ConfigurationStore(), previewMode: Bool? = nil,
          displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil,
          notificationCenter: NotificationCenter = .default,
          audioCapture: (any StationAudioCapturing)? = nil,
-         realtimeStart: @escaping @Sendable (LightConnection, LightChannel) async throws -> Void = { try await $0.startRealtime(channel: $1) }) {
+         realtimeStart: @escaping @Sendable (LightConnection, LightChannel) async throws -> Void = { try await $0.startRealtime(channel: $1) },
+         automationClock: @escaping @MainActor () -> Date = Date.init,
+         automationCalendar: Calendar = .autoupdatingCurrent) {
         self.store = store
         self.displayProvider = displayProvider
         self.notificationCenter = notificationCenter
         self.audio = audioCapture ?? AudioSyncCapture()
         self.realtimeStart = realtimeStart
+        self.automationClock = automationClock
+        self.automationCalendar = automationCalendar
+        self.automationCursor = automationClock()
         preview = previewMode ?? ProcessInfo.processInfo.arguments.contains("--demo")
         do { presets = try StationPresets.load() }
         catch { fatalError("Cannot load bundled Station presets: \(error)") }
@@ -204,12 +218,13 @@ final class StationModel: ObservableObject {
     func updateAssignment(_ entry: DeviceEntry, _ change: (inout DeviceAssignment) -> Void) {
         var value = assignment(for: entry); change(&value); config.assignments[entry.id] = value; save()
     }
-    func save() {
-        guard !preview, persistenceEnabled else { return }
+    @discardableResult func save() -> Bool {
+        guard !preview, persistenceEnabled else { return false }
         config.devices = devices.map { entry in
             var device = entry.device; device.properties = entry.confirmedProperties; return device
         }
-        do { try store.save(config) } catch { self.error = "Couldn’t save settings: \(error.localizedDescription)" }
+        do { try store.save(config); return true }
+        catch { self.error = "Couldn’t save settings: \(error.localizedDescription)"; return false }
     }
     func connection(_ entry: DeviceEntry) -> LightConnection {
         if let value = connections[entry.id] { return value }
@@ -228,6 +243,23 @@ final class StationModel: ObservableObject {
             invalidateAudioInputObservation = try audio.observeInputs { [weak self] in self?.loadAudioInputs() }
         } catch { if !shuttingDown { self.error = error.localizedDescription } }
         guard !preview else { return }
+        automationCursor = automationClock()
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        automationWorkspaceObservers = [
+            workspaceCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.automationWillSleep() }
+            },
+            workspaceCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in self?.automationDidWake() }
+            }
+        ]
+        automationTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let self, !self.shuttingDown else { return }
+                await self.processAutomations(at: self.automationClock())
+                do { try await Task.sleep(for: .seconds(1)) } catch { return }
+            }
+        }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -410,29 +442,32 @@ final class StationModel: ObservableObject {
         await stopSync()
         guard !shuttingDown else { return }
         if let conn = connections.removeValue(forKey: entry.id) { await conn.close() }
-        devices.removeAll { $0.id == entry.id }; config.assignments.removeValue(forKey: entry.id); save()
+        devices.removeAll { $0.id == entry.id }; config.assignments.removeValue(forKey: entry.id)
+        config.schedules.removeAll { $0.deviceID == entry.id }; save()
     }
-    func run(_ entry: DeviceEntry, commands: [(String, [JSONValue])], duringScene: Bool = false) async {
-        guard !shuttingDown, !scanning, (!transitioning || duringScene) else { return }
+    @discardableResult func run(_ entry: DeviceEntry, commands: [(String, [JSONValue])], duringScene: Bool = false,
+                               validating: @escaping @MainActor () -> Bool = { true }) async -> Bool {
+        guard !shuttingDown, !scanning, (!transitioning || duringScene), validating() else { return false }
         let refresh = refreshTasks[entry.id]
         guard !commandDevices.contains(entry.id), !entry.busy || refresh != nil else {
-            error = "A command for \(entry.device.displayName) is still pending. Try again when it finishes."; return
+            error = "A command for \(entry.device.displayName) is still pending. Try again when it finishes."; return false
         }
-        if preview { notice = "Preview mode: commands stay on this Mac."; return }
+        if preview { notice = "Preview mode: commands stay on this Mac."; return false }
         commandDevices.insert(entry.id)
         entry.busy = true; controlling = true
         let previous = controlTask
         let operationID = UUID()
+        var succeeded = false
         let operation = Task { [self] in
             await previous?.value
             await refresh?.value
-            guard !shuttingDown, !Task.isCancelled else { return }
+            guard !shuttingDown, !Task.isCancelled, validating() else { return }
             entry.busy = true
             if active { await stopSync(cancelStartup: false) } else { await cleanupTask?.value }
-            guard !shuttingDown, !Task.isCancelled else { return }
+            guard !shuttingDown, !Task.isCancelled, validating() else { return }
             do {
                 for cmd in commands {
-                    guard !shuttingDown, !Task.isCancelled else { return }
+                    guard !shuttingDown, !Task.isCancelled, validating() else { return }
                     _ = try await connection(entry).request(method: cmd.0, params: cmd.1)
                 }
                 guard !shuttingDown, !Task.isCancelled else { return }
@@ -440,6 +475,7 @@ final class StationModel: ObservableObject {
                 let values = try await connection(entry).properties(includeCached: false)
                 guard !shuttingDown, !Task.isCancelled else { return }
                 mergeProperties(values, into: entry, observedAt: adjustmentRevision); save()
+                succeeded = true
             } catch {
                 if !shuttingDown && !(error is CancellationError) {
                     entry.error = error.localizedDescription
@@ -452,6 +488,7 @@ final class StationModel: ObservableObject {
         controls.removeValue(forKey: operationID); commandDevices.remove(entry.id)
         controlling = !controls.isEmpty; entry.busy = refreshTasks[entry.id] != nil
         if controls.isEmpty { controlTask = nil }
+        return succeeded
     }
     func apply(_ scene: ScenePreset) async {
         guard !transitioning, !controlling, !scanning, !shuttingDown else { return }
@@ -489,6 +526,246 @@ final class StationModel: ObservableObject {
         guard !shuttingDown else { return }
         await stopSync()
         for state in scene.actions { guard !shuttingDown else { return }; if let entry = devices.first(where: { $0.id == state.deviceID }) { await run(entry, commands: restoreCommands(state), duringScene: true) } }
+    }
+    func nextOccurrence(for schedule: LightSchedule) -> ScheduleOccurrence? {
+        SchedulePlanner.nextOccurrence(for: schedule, after: automationClock(), calendar: automationCalendar)
+    }
+    private func validateSchedule(_ schedule: LightSchedule) throws {
+        try schedule.validate()
+        guard let entry = devices.first(where: { $0.id == schedule.deviceID }),
+              schedule.channel != .background || entry.device.hasBackground else {
+            throw StationError.unavailable("Choose an available light and channel for this schedule.")
+        }
+        if let presetID = schedule.presetID {
+            guard let preset = presets.scenes.first(where: { $0.id == presetID }), preset.powerMode != 1 else {
+                throw StationError.unavailable("Choose an available turn-on scene.")
+            }
+            _ = try SceneCompatibility.adapted(preset, device: entry.device, channel: schedule.channel)
+        }
+    }
+    func upsertSchedule(_ value: LightSchedule) throws {
+        guard !preview, !shuttingDown, persistenceEnabled else {
+            throw StationError.unavailable("Schedules cannot be saved in the current app state.")
+        }
+        var schedule = value
+        schedule.name = schedule.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        try validateSchedule(schedule)
+        schedule.lastOnAttempt = nil; schedule.lastOffAttempt = nil; schedule.lastResult = nil
+        if schedule.enabled, nextOccurrence(for: schedule) == nil {
+            throw StationError.unavailable("Choose a future date or a repeating schedule.")
+        }
+        let before = config
+        if let index = config.schedules.firstIndex(where: { $0.id == schedule.id }) { config.schedules[index] = schedule }
+        else {
+            guard config.schedules.count < 256 else { throw StationError.unavailable("Remove a schedule before adding another.") }
+            config.schedules.append(schedule)
+        }
+        guard save() else { config = before; throw StationError.unavailable(error ?? "The schedule could not be saved.") }
+        automationArmedAt[schedule.id] = automationClock()
+    }
+    func removeSchedule(_ id: UUID) {
+        guard !preview, !shuttingDown else { return }
+        let before = config
+        config.schedules.removeAll { $0.id == id }
+        if !save() { config = before }
+        else { automationArmedAt.removeValue(forKey: id) }
+    }
+    func setScheduleEnabled(_ id: UUID, enabled: Bool) {
+        guard !preview, !shuttingDown, let index = config.schedules.firstIndex(where: { $0.id == id }) else { return }
+        var schedule = config.schedules[index]
+        schedule.enabled = enabled
+        do {
+            try validateSchedule(schedule)
+            if enabled, nextOccurrence(for: schedule) == nil { throw StationError.unavailable("Choose a future date before enabling this schedule.") }
+            let before = config
+            config.schedules[index] = schedule
+            if !save() { config = before }
+            else if enabled { automationArmedAt[id] = automationClock() }
+        } catch { self.error = error.localizedDescription }
+    }
+    func sleepTimer(for entry: DeviceEntry, channel: LightChannel) -> LightSchedule? {
+        config.schedules.first { $0.purpose == .sleepTimer && $0.enabled && $0.deviceID == entry.id && $0.channel == channel && $0.date > automationClock() }
+    }
+    func setSleepTimer(_ entry: DeviceEntry, channel: LightChannel, minutes: Int) async {
+        guard !shuttingDown, !preview, devices.contains(where: { $0 === entry }) else { return }
+        guard (1...60).contains(minutes), channel != .background || entry.device.hasBackground else {
+            error = "Choose a valid channel and a timer from 1 to 60 minutes."; return
+        }
+        guard entry.value("power", channel: channel) == "on" else { error = "Turn on the \(channel.title.lowercased()) before setting its sleep timer."; return }
+        if LightDeviceFeatures.canUseDeviceTimer(entry.device, channel: channel) {
+            do {
+                let command = try LightDeviceFeatures.sleepTimer(minutes: minutes)
+                let accepted = await run(entry, commands: [command], validating: { [weak self, weak entry] in
+                    guard let self, let entry else { return false }
+                    return self.devices.contains { $0 === entry } && LightDeviceFeatures.canUseDeviceTimer(entry.device, channel: channel) && entry.value("power", channel: channel) == "on"
+                })
+                guard accepted, !shuttingDown else { return }
+                config.schedules.removeAll { $0.purpose == .sleepTimer && $0.deviceID == entry.id && $0.channel == channel }
+                save(); notice = "The task-light sleep timer was accepted by the light. It runs independently of this Mac."
+            } catch { self.error = error.localizedDescription }
+        } else {
+            let deadline = automationClock().addingTimeInterval(Double(minutes) * 60)
+            // Keep one local timer record per channel, including a completed or
+            // missed timer. Repeated use must not fill the schedule limit.
+            let existing = config.schedules.first { $0.purpose == .sleepTimer && $0.deviceID == entry.id && $0.channel == channel }
+            let components = automationCalendar.dateComponents([.hour, .minute], from: deadline)
+            var timer = LightSchedule(name: "Sleep timer", deviceID: entry.id, channel: channel,
+                                      date: deadline, offMinute: (components.hour ?? 0) * 60 + (components.minute ?? 0))
+            if let existing { timer.id = existing.id }
+            timer.purpose = .sleepTimer
+            do { try upsertSchedule(timer); notice = "Mac sleep timer set. Station must stay running and this Mac awake." }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+    func cancelSleepTimer(_ entry: DeviceEntry, channel: LightChannel) async {
+        guard !shuttingDown, !preview else { return }
+        if let timer = config.schedules.first(where: { $0.purpose == .sleepTimer && $0.deviceID == entry.id && $0.channel == channel }) { removeSchedule(timer.id); return }
+        guard LightDeviceFeatures.canUseDeviceTimer(entry.device, channel: channel) else { return }
+        if await run(entry, commands: [LightDeviceFeatures.cancelSleepTimer], validating: { [weak self, weak entry] in
+            guard let self, let entry else { return false }
+            return self.devices.contains { $0 === entry } && LightDeviceFeatures.canUseDeviceTimer(entry.device, channel: channel)
+        }), !shuttingDown { notice = "The light accepted the timer cancellation." }
+    }
+    func savePowerOnDefault(_ entry: DeviceEntry, channel: LightChannel) async {
+        guard !shuttingDown, !preview else { return }
+        guard !active, !transitioning else { error = "Stop sync before saving a power-on default."; return }
+        guard LightDeviceFeatures.canSaveDefault(entry.device, channel: channel) else {
+            error = "This light does not advertise saving a default for that channel."; return
+        }
+        guard entry.value("power", channel: channel) == "on" else { error = "Turn on the \(channel.title.lowercased()) before saving its default."; return }
+        if await run(entry, commands: [LightDeviceFeatures.saveDefault(channel: channel)], validating: { [weak self, weak entry] in
+            guard let self, let entry else { return false }
+            return self.devices.contains { $0 === entry } && LightDeviceFeatures.canSaveDefault(entry.device, channel: channel) && entry.value("power", channel: channel) == "on"
+        }), !shuttingDown { notice = "The light accepted the current \(channel.title.lowercased()) state as its power-on default." }
+    }
+    /// Explicit clock seam; the live driver runs only after begin(). A long gap
+    /// is a missed action, never a request to replay changes on wake or launch.
+    func processAutomations(at now: Date) async {
+        guard !preview, !shuttingDown, !automationSleeping, persistenceEnabled, !Task.isCancelled, !automationTickRunning,
+              now.timeIntervalSinceReferenceDate.isFinite else { return }
+        automationTickRunning = true; defer { automationTickRunning = false }
+        let since = automationCursor
+        if now <= since { automationCursor = now; return }
+        var expired = false
+        for index in config.schedules.indices where config.schedules[index].enabled && config.schedules[index].weekdays.isEmpty {
+            if SchedulePlanner.nextOccurrence(for: config.schedules[index], after: since, calendar: automationCalendar) == nil {
+                config.schedules[index].enabled = false
+                if config.schedules[index].lastResult == nil || config.schedules[index].lastResult?.hasPrefix("Attempting") == true {
+                    config.schedules[index].lastResult = "Missed while Station was inactive."
+                }
+                expired = true
+            }
+        }
+        if expired { save() }
+        if now.timeIntervalSince(since) > 90 {
+            automationCursor = now
+            skipMissedAutomations(since: since, through: now); return
+        }
+        // Briefly defer while a user owns the controls. The bounded window still
+        // expires if a long operation would make the requested time misleading.
+        guard !transitioning, !controlling, !scanning, !connecting else { return }
+        automationCursor = now
+        let batchEpoch = automationEpoch
+        var due: [ScheduleOccurrence] = []
+        for schedule in config.schedules {
+            let armedSince = max(since, automationArmedAt[schedule.id] ?? since)
+            due.append(contentsOf: SchedulePlanner.dueOccurrences(for: schedule, since: armedSince, now: now, calendar: automationCalendar))
+        }
+        due.sort { first, second in
+            if first.date == second.date {
+                // Missing civil times may converge during a DST jump. Preserve
+                // the planner's on-before-off order so the final state is off.
+                if first.action != second.action { return first.action == .on }
+                return first.id < second.id
+            }
+            return first.date < second.date
+        }
+        for occurrence in due {
+            guard !automationSleeping, automationEpoch == batchEpoch else { break }
+            guard !shuttingDown, !Task.isCancelled,
+                  let index = config.schedules.firstIndex(where: { $0.id == occurrence.scheduleID && $0.enabled }) else { continue }
+            let schedule = config.schedules[index]
+            let armedSince = max(since, automationArmedAt[schedule.id] ?? since)
+            // Another due action may have suspended while this schedule was
+            // edited. Recompute eligibility from the current definition.
+            guard SchedulePlanner.dueOccurrences(for: schedule, since: armedSince, now: now, calendar: automationCalendar).contains(where: { $0.id == occurrence.id }) else { continue }
+            let epoch = batchEpoch
+            // Persist the claim before any network work, including an uncertain
+            // ACK. Restarting never retries an occurrence that may have applied.
+            if occurrence.action == .on { config.schedules[index].lastOnAttempt = occurrence.date }
+            else { config.schedules[index].lastOffAttempt = occurrence.date }
+            config.schedules[index].lastResult = "Attempting \(occurrence.action.rawValue)…"
+            guard save() else { config.schedules[index] = schedule; continue }
+            do {
+                try validateSchedule(schedule)
+                guard let entry = devices.first(where: { $0.id == schedule.deviceID }) else { throw StationError.unavailable("The scheduled light is no longer available.") }
+                let commands: [(String, [JSONValue])]
+                if occurrence.action == .off { commands = [LightCommands.power(false, channel: schedule.channel)] }
+                else if let id = schedule.presetID, let preset = presets.scenes.first(where: { $0.id == id }) {
+                    commands = LightCommands.scene(try SceneCompatibility.adapted(preset, device: entry.device, channel: schedule.channel), channel: schedule.channel)
+                } else if var properties = schedule.customProperties {
+                    properties[schedule.channel == .main ? "power" : "bg_power"] = "on"
+                    commands = restoreCommands(SavedLightState(deviceID: entry.id, channel: schedule.channel, properties: properties))
+                } else { commands = [LightCommands.power(true, channel: schedule.channel)] }
+                let accepted = await run(entry, commands: commands, validating: { [weak self] in
+                    guard let self, !self.automationSleeping, self.automationEpoch == epoch,
+                          self.automationClock() >= occurrence.date,
+                          self.automationClock().timeIntervalSince(occurrence.date) <= 90,
+                          self.devices.contains(where: { $0 === entry }),
+                          let current = self.config.schedules.first(where: { $0.id == schedule.id && $0.enabled }),
+                          current.deviceID == schedule.deviceID, current.channel == schedule.channel,
+                          current.date == schedule.date, current.weekdays == schedule.weekdays,
+                          current.onMinute == schedule.onMinute, current.offMinute == schedule.offMinute,
+                          current.presetID == schedule.presetID, current.customProperties == schedule.customProperties,
+                          (try? self.validateSchedule(current)) != nil else { return false }
+                    return (occurrence.action == .on ? current.lastOnAttempt : current.lastOffAttempt) == occurrence.date
+                })
+                finishOccurrence(occurrence, result: accepted ? "\(occurrence.action == .on ? "Turn on" : "Turn off") acknowledged." : "Action failed or was cancelled. Check the light connection; it will not be retried automatically.", now: now)
+            } catch { finishOccurrence(occurrence, result: error.localizedDescription, now: now) }
+        }
+        // Several civil times can resolve to one instant during a DST jump (or
+        // several actions can be due in one tick). Keep a dated schedule armed
+        // until the whole batch has had a chance to apply its final off action.
+        guard !shuttingDown, !Task.isCancelled else { return }
+        var finished = false
+        for index in config.schedules.indices where config.schedules[index].enabled && config.schedules[index].weekdays.isEmpty {
+            if SchedulePlanner.nextOccurrence(for: config.schedules[index], after: now, calendar: automationCalendar) == nil {
+                config.schedules[index].enabled = false
+                if config.schedules[index].lastResult == nil { config.schedules[index].lastResult = "Missed while Station was inactive." }
+                finished = true
+            }
+        }
+        if finished { save() }
+    }
+    private func finishOccurrence(_ occurrence: ScheduleOccurrence, result: String, now: Date) {
+        guard !shuttingDown, let index = config.schedules.firstIndex(where: { $0.id == occurrence.scheduleID }),
+              (occurrence.action == .on ? config.schedules[index].lastOnAttempt : config.schedules[index].lastOffAttempt) == occurrence.date else { return }
+        config.schedules[index].lastResult = result
+        save()
+    }
+    func automationWillSleep() {
+        guard !shuttingDown else { return }
+        automationSleeping = true; automationEpoch += 1
+    }
+    func automationDidWake() {
+        guard !shuttingDown else { return }
+        let now = automationClock()
+        if now > automationCursor { skipMissedAutomations(since: automationCursor, through: now) }
+        automationCursor = now; automationSleeping = false; automationEpoch += 1
+    }
+    private func skipMissedAutomations(since: Date, through now: Date) {
+        var changed = false
+        for index in config.schedules.indices where config.schedules[index].enabled {
+            let armedSince = max(since, automationArmedAt[config.schedules[index].id] ?? since)
+            if let next = SchedulePlanner.nextOccurrence(for: config.schedules[index], after: armedSince, calendar: automationCalendar), next.date <= now {
+                config.schedules[index].lastResult = "Missed while Station was inactive or busy."
+                if config.schedules[index].weekdays.isEmpty && SchedulePlanner.nextOccurrence(for: config.schedules[index], after: now, calendar: automationCalendar) == nil {
+                    config.schedules[index].enabled = false
+                }
+                changed = true
+            }
+        }
+        if changed { save() }
     }
     func loadDisplays() async {
         do { try await updateDisplays() }
@@ -737,7 +1014,7 @@ final class StationModel: ObservableObject {
         var result: [(String, [JSONValue])] = []
         if (p[prefix + "color_mode"] == "2" || (state.channel == .main && devices.first(where: { $0.id == state.deviceID })?.device.hasBackground == true)), let ct = p[prefix + "ct"].flatMap(Int.init), ct > 0 {
             result.append(LightCommands.temperature(ct, channel: state.channel))
-        } else if !(state.channel == .main && devices.first(where: { $0.id == state.deviceID })?.device.hasBackground == true), let rgb = p[prefix + "rgb"].flatMap(Int.init), rgb > 0 {
+        } else if !(state.channel == .main && devices.first(where: { $0.id == state.deviceID })?.device.hasBackground == true), let rgb = p[prefix + "rgb"].flatMap(Int.init), (0...0xFFFFFF).contains(rgb) {
             result.append(LightCommands.color(StationCore.RGBColor(packed: rgb), channel: state.channel))
         }
         if let bright = p[prefix + "bright"].flatMap(Int.init), bright > 0 { result.append(LightCommands.brightness(bright, channel: state.channel)) }
@@ -745,8 +1022,10 @@ final class StationModel: ObservableObject {
         return result
     }
     func shutdown() async {
-        shuttingDown = true; pollTask?.cancel(); displayTask?.cancel(); startupTask?.cancel(); adjustmentTask?.cancel()
+        shuttingDown = true; pollTask?.cancel(); displayTask?.cancel(); startupTask?.cancel(); adjustmentTask?.cancel(); automationTask?.cancel()
         if let displayObserver { notificationCenter.removeObserver(displayObserver); self.displayObserver = nil }
+        for observer in automationWorkspaceObservers { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+        automationWorkspaceObservers.removeAll()
         invalidateAudioInputObservation?(); invalidateAudioInputObservation = nil
         adjustmentQueue.removeAll(); queuedAdjustments.removeAll(); desiredAdjustments.removeAll()
         for entry in devices { recomposeProperties(entry) }
@@ -758,6 +1037,7 @@ final class StationModel: ObservableObject {
         await pollTask?.value
         for operation in Array(refreshTasks.values) { await operation.value }
         for operation in Array(controls.values) { await operation.value }
+        await automationTask?.value
         await stopSync()
         for connection in connections.values { await connection.close() }
     }
