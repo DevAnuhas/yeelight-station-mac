@@ -1,12 +1,36 @@
 import AppKit
 import Combine
+import StationCapture
 import StationCore
 
 enum StationMenuAction: Equatable {
     case openStation, settings, quit
     case power(deviceID: String, channel: LightChannel, on: Bool)
     case brightness(deviceID: String, channel: LightChannel, percent: Int)
-    case start(SyncMode), stop, savedScene(UUID)
+    case start(SyncMode, displayID: UInt32? = nil, audioSource: AudioSource? = nil), stop, savedScene(UUID)
+
+    struct StartRequest: Equatable {
+        let mode: SyncMode
+        let displayID: UInt32?
+    }
+
+    // Menu items are snapshots. Resolve their intent against current state before
+    // changing the shared selection or starting any capture/device operation.
+    func startRequest(in state: StationMenuState, isTerminating: Bool = false) -> StartRequest? {
+        guard !isTerminating, case .start(let mode, let displayID, let source) = self,
+              source == nil || (mode == .music && source == state.audioSource),
+              displayID == nil || state.requiresDisplay(for: mode),
+              state.allowsStart(mode, displayID: displayID) else { return nil }
+        return StartRequest(mode: mode, displayID: state.requiresDisplay(for: mode) ? displayID ?? state.selectedDisplayID : nil)
+    }
+
+    @MainActor
+    func prepareStart(on model: StationModel, isTerminating: Bool = false) -> SyncMode? {
+        guard let request = startRequest(in: StationMenuState(model: model), isTerminating: isTerminating),
+              model.canStart(request.mode, displayID: request.displayID) else { return nil }
+        if let displayID = request.displayID, !model.selectDisplay(displayID) { return nil }
+        return model.canStart(request.mode) ? request.mode : nil
+    }
 
     // Resolve again on selection: discovery may change devices while a menu is open.
     func deviceCommand(in devices: [LightDevice]) -> (deviceID: String, command: (String, [JSONValue]))? {
@@ -28,9 +52,12 @@ enum StationMenuAction: Equatable {
         guard StationMenuState(model: model).allowsControl,
               let resolved = deviceCommand(in: model.devices.map(\.device)),
               let entry = model.devices.first(where: { $0.id == resolved.deviceID }) else { return }
-        // model.run waits for polling and serializes command acknowledgements.
-        // A background property read must never discard an explicit menu intent.
-        await model.run(entry, commands: [resolved.command])
+        if case .brightness(_, let channel, let percent) = self {
+            model.setBrightness(entry, channel: channel, value: percent)
+        } else {
+            // Power remains a serialized command that waits for polling.
+            await model.run(entry, commands: [resolved.command])
+        }
     }
 }
 
@@ -67,9 +94,17 @@ struct StationMenuState {
     let preview: Bool
     let hasOutputs: Bool
     let error: String?
+    let displays: [CaptureDisplay]
+    let selectedDisplayID: UInt32?
+    let audioSource: AudioSource
+    let shuttingDown: Bool
 
-    var allowsControl: Bool { !preview && !transitioning && !controlling && !scanning }
-    func allowsStart(_ target: SyncMode) -> Bool { allowsControl && hasOutputs && target != .idle && mode != target }
+    var allowsControl: Bool { !preview && !transitioning && !controlling && !scanning && !shuttingDown }
+    func requiresDisplay(for target: SyncMode) -> Bool { target == .screen || (target == .music && audioSource == .system) }
+    func allowsStart(_ target: SyncMode, displayID: UInt32? = nil) -> Bool {
+        guard allowsControl && hasOutputs && target != .idle && mode != target else { return false }
+        return !requiresDisplay(for: target) || displays.contains { $0.id == (displayID ?? selectedDisplayID) }
+    }
     var allowsStop: Bool { mode != .idle || transitioning }
     var status: String {
         if preview { return "Preview mode · No device commands" }
@@ -96,12 +131,60 @@ struct StationMenuState {
         devices = model.devices.map { Device(light: $0.device, online: $0.online, busy: $0.busy, error: $0.error) }
         mode = model.mode; transitioning = model.transitioning; controlling = model.controlling
         scanning = model.scanning; preview = model.preview; hasOutputs = !model.outputs.isEmpty; error = model.error
+        displays = model.displays; selectedDisplayID = model.selectedDisplay?.id; audioSource = model.audioSource
+        shuttingDown = model.isShuttingDown
     }
 
     init(devices: [Device], mode: SyncMode = .idle, transitioning: Bool = false, controlling: Bool = false,
-         scanning: Bool = false, preview: Bool = false, hasOutputs: Bool = true, error: String? = nil) {
+         scanning: Bool = false, preview: Bool = false, hasOutputs: Bool = true, error: String? = nil,
+         displays: [CaptureDisplay] = [], selectedDisplayID: UInt32? = nil, audioSource: AudioSource = .system,
+         shuttingDown: Bool = false) {
         self.devices = devices; self.mode = mode; self.transitioning = transitioning; self.controlling = controlling
         self.scanning = scanning; self.preview = preview; self.hasOutputs = hasOutputs; self.error = error
+        self.displays = displays; self.selectedDisplayID = selectedDisplayID; self.audioSource = audioSource
+        self.shuttingDown = shuttingDown
+    }
+}
+
+@MainActor
+enum StationSyncMenu {
+    static func startItem(_ mode: SyncMode, state: StationMenuState, target: AnyObject? = nil,
+                          selector: Selector? = nil, isTerminating: Bool = false) -> NSMenuItem {
+        let title = mode == .screen ? "Start Color Play" : "Start Music Flow"
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.state = state.mode == mode ? .on : .off
+        if state.requiresDisplay(for: mode), state.displays.count > 1 {
+            let submenu = NSMenu(title: title); submenu.autoenablesItems = false
+            for display in state.displays {
+                let choice = actionItem("\(display.name) · \(display.width) × \(display.height)", mode: mode,
+                                        displayID: display.id, state: state, target: target, selector: selector,
+                                        isTerminating: isTerminating)
+                choice.state = state.selectedDisplayID == display.id ? .on : .off
+                submenu.addItem(choice)
+            }
+            item.submenu = submenu
+            item.isEnabled = submenu.items.contains(where: \.isEnabled)
+            item.toolTip = "Choose a display and start. Color Play and Music Flow with system audio share this selection."
+        } else {
+            let displayID = state.requiresDisplay(for: mode) ? state.displays.first?.id : nil
+            let action = actionItem(title, mode: mode, displayID: displayID, state: state, target: target,
+                                    selector: selector, isTerminating: isTerminating)
+            action.state = item.state
+            return action
+        }
+        return item
+    }
+
+    private static func actionItem(_ title: String, mode: SyncMode, displayID: UInt32?, state: StationMenuState,
+                                   target: AnyObject?, selector: Selector?, isTerminating: Bool) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+        let action = StationMenuAction.start(mode, displayID: displayID, audioSource: mode == .music ? state.audioSource : nil)
+        item.target = target; item.representedObject = action
+        item.isEnabled = action.startRequest(in: state, isTerminating: isTerminating) != nil
+        if state.requiresDisplay(for: mode), state.displays.isEmpty {
+            item.toolTip = "Connect a display, then refresh displays in Station."
+        }
+        return item
     }
 }
 
@@ -134,6 +217,8 @@ final class StationStatusItem: NSObject {
             model.$controlling.map { _ in () }.eraseToAnyPublisher(),
             model.$scanning.map { _ in () }.eraseToAnyPublisher(),
             model.$config.map { _ in () }.eraseToAnyPublisher(),
+            model.$displays.map { _ in () }.eraseToAnyPublisher(),
+            model.$audioSource.map { _ in () }.eraseToAnyPublisher(),
             model.$error.map { _ in () }.eraseToAnyPublisher()
         ]).sink { [weak self] in self?.scheduleUpdate() }.store(in: &subscriptions)
         updatePresentation()
@@ -218,9 +303,9 @@ final class StationStatusItem: NSObject {
             parent.submenu = controls; parent.isEnabled = !isTerminating; menu.addItem(parent)
         }
         menu.addItem(.separator())
-        for (title, mode) in [("Start Color Play", SyncMode.screen), ("Start Music Flow", SyncMode.music)] {
-            let start = menuItem(title, action: .start(mode), enabled: state.allowsStart(mode))
-            start.state = state.mode == mode ? .on : .off; menu.addItem(start)
+        for mode in [SyncMode.screen, .music] {
+            menu.addItem(StationSyncMenu.startItem(mode, state: state, target: self,
+                                                  selector: #selector(performAction(_:)), isTerminating: isTerminating))
         }
         menu.addItem(menuItem("Stop Sync", action: .stop, enabled: state.allowsStop))
         if !model.config.savedScenes.isEmpty {
@@ -270,8 +355,9 @@ final class StationStatusItem: NSObject {
         switch action {
         case .power, .brightness:
             await action.executeDeviceCommand(on: model)
-        case .start(let mode):
-            guard state.allowsStart(mode) else { return }; await model.start(mode)
+        case .start:
+            guard let mode = action.prepareStart(on: model, isTerminating: isTerminating) else { return }
+            await model.start(mode)
         case .stop:
             guard state.allowsStop else { return }; await model.stopSync()
         case .savedScene(let id):

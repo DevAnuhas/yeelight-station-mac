@@ -13,13 +13,7 @@ struct ColorPlayView: View {
             HStack(alignment: .top, spacing: 18) {
                 GroupBox("Capture") {
                     VStack(alignment: .leading, spacing: 16) {
-                        HStack {
-                            Picker("Display", selection: Binding(get: { model.config.displayID ?? 0 }, set: { model.config.displayID = $0; model.save() })) {
-                                if model.displays.isEmpty { Text("Choose a display…").tag(UInt32(0)) }
-                                ForEach(model.displays) { display in Text("\(display.name) · \(display.width) × \(display.height)").tag(display.id) }
-                            }
-                            Button { Task { await model.loadDisplays() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("Load displays")
-                        }
+                        SyncDisplayPicker()
                         Picker("Layout", selection: $model.config.layoutID) { ForEach(model.presets.layouts) { Text($0.name).tag($0.id) } }
                         Picker("Response", selection: $model.config.frameInterval) { Text("Slow · 450 ms").tag(0.45); Text("Normal · 200 ms").tag(0.2); Text("Fast · 100 ms").tag(0.1) }
                         Text("macOS may ask for screen access when you start. Screen colors are processed on this Mac.").font(.caption).foregroundStyle(.secondary)
@@ -29,7 +23,7 @@ struct ColorPlayView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         brightness
                         Toggle("Restore color, brightness & power", isOn: $model.config.restoreOnStop).onChange(of: model.config.restoreOnStop) { _, _ in model.save() }
-                        startButton(.screen)
+                        SyncStartControl(mode: .screen)
                     }.padding(12)
                 }.frame(width: 260)
             }
@@ -37,11 +31,66 @@ struct ColorPlayView: View {
         }.onChange(of: model.config.layoutID) { _, _ in model.save() }.onChange(of: model.config.frameInterval) { _, _ in model.save() }
     }
     private var brightness: some View { VStack { HStack { Text("Brightness"); Spacer(); Text("\(Int(model.config.syncBrightness))%").foregroundStyle(.secondary).monospacedDigit() }; Slider(value: $model.config.syncBrightness, in: 1...100, step: 1, onEditingChanged: { if !$0 { model.save() } }) } }
-    @ViewBuilder private func startButton(_ mode: SyncMode) -> some View {
-        Button {
-            Task { if model.mode == mode { await model.stopSync() } else { await model.start(mode) } }
-        } label: { Label(model.mode == mode ? "Stop Color Play" : "Start Color Play", systemImage: model.mode == mode ? "stop.fill" : "play.fill").frame(maxWidth: .infinity) }
-            .buttonStyle(.borderedProminent).controlSize(.large).disabled(model.transitioning || model.controlling)
+}
+
+struct SyncDisplayPicker: View {
+    @EnvironmentObject private var model: StationModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Picker("Display", selection: Binding<UInt32?>(
+                    get: { model.selectedDisplay?.id },
+                    set: { if let id = $0 { model.selectDisplay(id) } }
+                )) {
+                    Text(model.displays.isEmpty ? "No displays found" : "Choose a display…")
+                        .tag(Optional<UInt32>.none).disabled(true)
+                    ForEach(model.displays) { display in
+                        Text("\(display.name) · \(display.width) × \(display.height)").tag(Optional(display.id))
+                    }
+                }
+                Button { Task { await model.loadDisplays() } } label: { Image(systemName: "arrow.clockwise") }
+                    .accessibilityLabel("Refresh displays")
+            }
+            Text("Shared by Color Play and Music Flow with system audio.").font(.caption).foregroundStyle(.secondary)
+        }.disabled(model.active || model.transitioning)
+    }
+}
+
+struct SyncStartControl: View {
+    @EnvironmentObject private var model: StationModel
+    let mode: SyncMode
+
+    private var name: String { mode == .screen ? "Color Play" : "Music Flow" }
+    private var stopping: Bool { model.mode == mode || model.transitioning }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button {
+                let shouldStop = stopping
+                Task { if shouldStop { await model.stopSync() } else { await model.start(mode) } }
+            } label: {
+                Label(stopping ? (model.transitioning ? "Stop Sync" : "Stop \(name)") : "Start \(name)",
+                      systemImage: stopping ? "stop.fill" : "play.fill").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            .disabled(!stopping && !model.canStart(mode))
+            if model.active && model.mode != mode && !model.transitioning {
+                Button("Stop Sync") { Task { await model.stopSync() } }.frame(maxWidth: .infinity)
+            }
+            if !stopping, let validationMessage {
+                Text(validationMessage).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var validationMessage: String? {
+        if model.preview { return "Connect a real light to start live sync." }
+        if model.requiresDisplay(for: mode), !model.displayReady(for: mode) {
+            return model.displays.isEmpty ? "Connect a display, then refresh the display list." : "Choose a display before starting \(name)."
+        }
+        if model.outputs.isEmpty { return "Add a light and enable it in Sync routing to start." }
+        return nil
     }
 }
 
@@ -89,6 +138,7 @@ struct MusicFlowView: View {
                 GroupBox("Sound & color") {
                     VStack(alignment: .leading, spacing: 16) {
                         Picker("Audio source", selection: $model.audioSource) { Text("System audio").tag(AudioSource.system); Text("Microphone").tag(AudioSource.microphone) }.disabled(model.active || model.transitioning)
+                        if model.audioSource == .system { SyncDisplayPicker() }
                         Picker("Palette", selection: $model.config.paletteID) {
                             ForEach(model.presets.palettes) { Text("\($0.group) / \($0.name)").tag($0.id) }
                         }
@@ -100,7 +150,7 @@ struct MusicFlowView: View {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack { HStack { Text("Brightness"); Spacer(); Text("\(Int(model.config.syncBrightness))%").foregroundStyle(.secondary) }; Slider(value: $model.config.syncBrightness, in: 1...100, step: 1, onEditingChanged: { if !$0 { model.save() } }) }
                         Toggle("Restore color, brightness & power", isOn: $model.config.restoreOnStop).onChange(of: model.config.restoreOnStop) { _, _ in model.save() }
-                        Button { Task { if model.mode == .music { await model.stopSync() } else { await model.start(.music) } } } label: { Label(model.mode == .music ? "Stop Music Flow" : "Start Music Flow", systemImage: model.mode == .music ? "stop.fill" : "play.fill").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large).disabled(model.transitioning || model.controlling)
+                        SyncStartControl(mode: .music)
                         Text("Only the selected audio source is used. Sound is processed on this Mac and is never saved.").font(.caption).foregroundStyle(.secondary)
                     }.padding(12)
                 }.frame(width: 260)
