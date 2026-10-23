@@ -1,5 +1,7 @@
 import AVFoundation
+import AudioToolbox
 import Combine
+import CoreAudio
 import CoreMedia
 import ScreenCaptureKit
 
@@ -19,10 +21,31 @@ public final class AudioSyncCapture: ObservableObject {
     private var generation = UUID()
     private var session: (any CaptureSession)?
     private var teardownTask: Task<Void, Never>?
+    private let inputCatalog: AudioInputDeviceCatalog
+    private let microphonePermission: @MainActor () async throws -> Void
+    private let makeMicrophoneEngine: @MainActor () -> any MicrophoneInputEngine
 
-    public init() {}
+    public init() {
+        inputCatalog = AudioInputDeviceCatalog()
+        microphonePermission = Self.requireMicrophonePermission
+        makeMicrophoneEngine = { AVMicrophoneInputEngine() }
+    }
+
+    init(inputHardware: any AudioInputHardware,
+         microphonePermission: @escaping @MainActor () async throws -> Void,
+         makeMicrophoneEngine: @escaping @MainActor () -> any MicrophoneInputEngine) {
+        inputCatalog = AudioInputDeviceCatalog(hardware: inputHardware)
+        self.microphonePermission = microphonePermission
+        self.makeMicrophoneEngine = makeMicrophoneEngine
+    }
+
+    /// CoreAudio metadata only; does not create an engine or request capture access.
+    public func availableAudioInputs() throws -> [AudioInputDevice] {
+        try inputCatalog.availableInputs()
+    }
 
     public func start(source: AudioSource, displayID: UInt32? = nil,
+                      inputDeviceUID: String? = nil,
                       onLevel: @escaping @MainActor @Sendable (Double) -> Void) async throws {
         let token = UUID()
         generation = token
@@ -72,9 +95,14 @@ public final class AudioSyncCapture: ObservableObject {
                     configuration: configuration, output: output, outputTypes: [.audio],
                     queue: DispatchQueue(label: "station.capture.audio", qos: .userInitiated), delivery: delivery)
             case .microphone:
-                try await Self.requireMicrophonePermission()
+                // Freeze the default to a UID before authorization can suspend.
+                // A missing pinned input must fail before any permission request.
+                let uid = try inputCatalog.resolve(uid: inputDeviceUID).device.id
+                try await microphonePermission()
                 try ensureCurrent(token)
-                newSession = MicrophoneCaptureSession(delivery: delivery)
+                // Resolve again after permission, before creating/opening the engine.
+                let deviceID = try inputCatalog.resolve(uid: uid).deviceID
+                newSession = MicrophoneCaptureSession(deviceID: deviceID, engine: makeMicrophoneEngine(), delivery: delivery)
             }
             session = newSession
             try await newSession.start()
@@ -163,44 +191,42 @@ private final class AudioStreamOutput: NSObject, SCStreamOutput, SCStreamDelegat
 }
 
 @MainActor
-private final class MicrophoneCaptureSession: CaptureSession {
-    private let engine = AVAudioEngine()
+final class MicrophoneCaptureSession: CaptureSession {
+    private let deviceID: AudioDeviceID
+    private let engine: any MicrophoneInputEngine
     private let delivery: CaptureDelivery<Double>
     private let mailbox: CaptureMailbox<Double>
-    private var installedTap = false
     private var stopped = false
-    private var observer: NSObjectProtocol?
 
-    init(delivery: CaptureDelivery<Double>) {
+    init(deviceID: AudioDeviceID, engine: any MicrophoneInputEngine, delivery: CaptureDelivery<Double>) {
+        self.deviceID = deviceID
+        self.engine = engine
         self.delivery = delivery
         mailbox = delivery.mailbox
     }
 
     func start() async throws {
-        guard AVCaptureDevice.default(for: .audio) != nil else { throw CaptureError.microphoneUnavailable }
-        let input = engine.inputNode
-        let format = input.outputFormat(forBus: 0)
+        // Set the underlying AUHAL before reading its new format, installing a tap,
+        // preparing, or starting. Never change initialization on engine-owned units.
+        try engine.selectDevice(deviceID)
+        let format = engine.outputFormat
         guard format.sampleRate.isFinite, format.sampleRate > 0,
               format.channelCount > 0, format.channelCount <= 32 else { throw CaptureError.microphoneUnavailable }
         guard format.commonFormat == .pcmFormatFloat32 else { throw CaptureError.unsupportedAudioFormat }
         let mailbox = mailbox
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+        engine.installTap(format: format, onBuffer: { buffer in
             do {
                 if let rms = try AudioLevelMeter.rms(in: buffer) { mailbox.publish(rms) }
             } catch {
                 mailbox.fail((error as? CaptureError) ?? .invalidAudioBuffer)
             }
-        }
-        installedTap = true
-        observer = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in
-                // The notification arrives on an internal audio queue. Defer
-                // teardown to the main delivery timer to avoid engine deadlock.
-                mailbox.fail(.microphoneConfigurationChanged)
-            }
+        }, onConfigurationChange: {
+            // The notification arrives on an internal audio queue. Defer
+            // teardown to the main delivery timer to avoid engine deadlock.
+            mailbox.fail(.microphoneConfigurationChanged)
+        })
         do {
-            engine.prepare()
-            try engine.start()
+            try engine.prepareAndStart()
         } catch {
             throw CaptureError.startFailed(error.localizedDescription)
         }
@@ -215,6 +241,59 @@ private final class MicrophoneCaptureSession: CaptureSession {
         invalidate()
         guard !stopped else { return }
         stopped = true
+        engine.stop()
+    }
+
+    deinit {
+        mailbox.invalidate()
+        if !stopped { engine.stop() }
+    }
+}
+
+/// The session drives this adapter on main. Its final ARC cleanup may run on any
+/// thread, so cleanup uses no actor precondition. Tests substitute a silent engine.
+protocol MicrophoneInputEngine: AnyObject {
+    func selectDevice(_ id: AudioDeviceID) throws
+    var outputFormat: AVAudioFormat { get }
+    func installTap(format: AVAudioFormat, onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+                    onConfigurationChange: @escaping @Sendable () -> Void)
+    func prepareAndStart() throws
+    func stop()
+}
+
+private final class AVMicrophoneInputEngine: MicrophoneInputEngine {
+    private let engine = AVAudioEngine()
+    private var installedTap = false
+    private var observer: NSObjectProtocol?
+    private var selectedDeviceID: AudioDeviceID?
+
+    func selectDevice(_ id: AudioDeviceID) throws {
+        guard let unit = engine.inputNode.audioUnit else { throw CaptureError.microphoneUnavailable }
+        try AudioUnitInputDeviceSelection(audioUnit: unit).select(id)
+        selectedDeviceID = id
+    }
+
+    var outputFormat: AVAudioFormat { engine.inputNode.outputFormat(forBus: 0) }
+
+    func installTap(format: AVAudioFormat, onBuffer: @escaping @Sendable (AVAudioPCMBuffer) -> Void,
+                    onConfigurationChange: @escaping @Sendable () -> Void) {
+        engine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in onBuffer(buffer) }
+        installedTap = true
+        observer = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil) { _ in onConfigurationChange() }
+    }
+
+    func prepareAndStart() throws {
+        engine.prepare()
+        try engine.start()
+        // A route change during startup must not silently capture a fallback input.
+        guard let id = selectedDeviceID, let unit = engine.inputNode.audioUnit else {
+            throw CaptureError.microphoneUnavailable
+        }
+        try AudioUnitInputDeviceSelection(audioUnit: unit).verify(id)
+    }
+
+    func stop() {
         if let observer { NotificationCenter.default.removeObserver(observer) }
         observer = nil
         engine.stop()
@@ -222,10 +301,5 @@ private final class MicrophoneCaptureSession: CaptureSession {
         installedTap = false
     }
 
-    deinit {
-        mailbox.invalidate()
-        if let observer { NotificationCenter.default.removeObserver(observer) }
-        engine.stop()
-        if installedTap { engine.inputNode.removeTap(onBus: 0) }
-    }
+    deinit { stop() }
 }
