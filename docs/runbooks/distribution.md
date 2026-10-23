@@ -36,7 +36,7 @@ Use an Apple Developer account authorized for that team and an app-specific pass
 KEYCHAIN_PROFILE='Station-Notary' scripts/notarize-app.sh
 ```
 
-The script uploads the signed app once, records the submission ID privately under `.analysis/notarization`, waits for Apple's decision, and retrieves the log. An Accepted result is followed by app-ticket stapling, ticket validation, Gatekeeper assessment and recreation of the ZIP from the stapled app. A signed build without that successful process is not called notarized.
+The script uploads the signed app once, records the submission ID privately under `.analysis/notarization`, waits for Apple's decision, and retrieves the log. An Accepted result is followed by app-ticket stapling, ticket validation, Gatekeeper assessment and recreation of the ZIP from the stapled app, with the project MIT `LICENSE` as a top-level archive sibling. The notice is outside the app bundle and does not change its accepted signature. A signed build without that successful process is not called notarized.
 
 If the wait times out, Apple may still be processing the upload. Resume the existing submission using the receipt directory printed by the script; do not rebuild, re-sign or upload again blindly:
 
