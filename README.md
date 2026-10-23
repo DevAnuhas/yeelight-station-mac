@@ -7,8 +7,7 @@
   <a href="https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.2.1"><img src="https://img.shields.io/badge/Universal-Apple%20Silicon%20%2B%20Intel-5b6de6" alt="Universal app for Apple Silicon and Intel"></a>
   <a href="docs/runbooks/distribution.md"><img src="https://img.shields.io/badge/Distribution-Signed%20%26%20Notarized-20a77a" alt="Developer ID signed and Apple notarized"></a>
 </p>
-
-# Yeelight Station for Mac
+<h1 align="center">Yeelight Station for Mac</h1>
 
 An independent native macOS implementation of Yeelight Station, reconstructed from the supplied Windows 1.5.0.31025 installer using [REA](https://github.com/morluto/rea) and Ghidra. Initial device target: **Yeelight Monitor Light Bar Pro (`lamp15`)**.
 
