@@ -7,10 +7,6 @@ private let stationAccent = Color(red: 0.65, green: 0.60, blue: 1.0)
 
 extension StationCore.RGBColor {
     var color: Color { Color(red: Double(red) / 255, green: Double(green) / 255, blue: Double(blue) / 255) }
-    init(_ color: Color) {
-        let ns = NSColor(color).usingColorSpace(.sRGB) ?? .black
-        self.init(red: UInt8(max(0, min(255, ns.redComponent * 255))), green: UInt8(max(0, min(255, ns.greenComponent * 255))), blue: UInt8(max(0, min(255, ns.blueComponent * 255))))
-    }
 }
 
 enum StationPage: String, CaseIterable, Identifiable {
@@ -35,13 +31,18 @@ struct StationView: View {
     @EnvironmentObject private var model: StationModel
     @State private var page: StationPage? = .station
     @State private var showAdd = false
+
+    init(initialPage: StationPage = .station) {
+        _page = State(initialValue: initialPage)
+    }
+
     var body: some View {
         NavigationSplitView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack(spacing: 9) {
                     Image(systemName: "light.beacon.max.fill").font(.title2).foregroundStyle(stationAccent)
                     VStack(alignment: .leading, spacing: 1) { Text("YEELIGHT").font(.system(size: 12, weight: .bold, design: .rounded)).tracking(2); Text("Station for Mac").font(.caption).foregroundStyle(.secondary) }
-                }.padding(.horizontal, 16).padding(.top, 32)
+                }.padding(.horizontal, 16).padding(.top, 10)
                 List(selection: $page) {
                     Section("WORKSPACE") {
                         Label(StationPage.station.rawValue, systemImage: StationPage.station.symbol).tag(StationPage.station)
@@ -73,7 +74,7 @@ struct StationView: View {
                     Spacer()
                     if model.active { Button("Stop Sync", systemImage: "stop.fill") { Task { await model.stopSync() } }.tint(.orange) }
                     Button { showAdd = true } label: { Label("Add Light", systemImage: "plus") }.buttonStyle(.borderedProminent).tint(stationAccent)
-                }.padding(.horizontal, 28).padding(.top, 30).padding(.bottom, 24)
+                }.padding(.horizontal, 28).padding(.top, 10).padding(.bottom, 20)
                 Divider().opacity(0.5)
                 if let error = model.error {
                     MessageStrip(message: error, symbol: "exclamationmark.triangle", color: .orange) { model.error = nil }
@@ -214,7 +215,7 @@ struct DeviceCard: View {
             HStack(alignment: .top, spacing: 22) {
                 ChannelControl(entry: entry, channel: .main)
                 if entry.device.hasBackground { Divider(); ChannelControl(entry: entry, channel: .background) }
-            }.disabled(entry.busy || model.transitioning || model.controlling || model.scanning)
+            }.disabled(model.transitioning || model.controlling || model.scanning || model.isShuttingDown)
         }.padding(20).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14)).overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.065)))
         .confirmationDialog("Remove \(entry.device.displayName)?", isPresented: $remove) { Button("Remove Light", role: .destructive) { Task { await model.remove(entry) } } } message: { Text("This removes it from Station on this Mac.") }
         .alert("Rename light on this Mac", isPresented: $rename) {
@@ -231,9 +232,12 @@ struct ChannelControl: View {
     let channel: LightChannel
     @State private var brightness = 50.0
     @State private var temperature = 4000.0
-    @State private var color = Color.purple
-    @State private var colorTask: Task<Void, Never>?
+    @State private var editingBrightness = false
+    @State private var editingTemperature = false
     var isColor: Bool { channel == .background || !entry.device.hasBackground }
+    private var color: StationCore.RGBColor {
+        StationCore.RGBColor(packed: Int(entry.value("rgb", channel: channel) ?? "16777215") ?? 16777215)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             HStack {
@@ -243,32 +247,41 @@ struct ChannelControl: View {
             }
             VStack(spacing: 7) {
                 HStack { Label("Brightness", systemImage: "sun.max"); Spacer(); Text("\(Int(brightness))%").monospacedDigit().foregroundStyle(.secondary) }.font(.caption)
-                Slider(value: $brightness, in: 1...100, step: 1, onEditingChanged: { editing in if !editing { send(LightCommands.brightness(Int(brightness), channel: channel)) } }).accessibilityLabel("\(channel.title) brightness")
+                Slider(value: Binding(get: { brightness }, set: { value in
+                    brightness = value
+                    model.setBrightness(entry, channel: channel, value: Int(value))
+                }), in: 1...100, step: 1, onEditingChanged: { editing in
+                    editingBrightness = editing
+                    if !editing { load() }
+                })
+                    .accessibilityLabel("\(channel.title) brightness")
             }
             if isColor {
-                ColorPicker("Color", selection: $color, supportsOpacity: false).font(.caption)
-                    .onChange(of: color) { _, value in
-                        guard StationCore.RGBColor(value).packed != (Int(entry.value("rgb", channel: channel) ?? "16777215") ?? 16777215) else { return }
-                        colorTask?.cancel()
-                        colorTask = Task { try? await Task.sleep(for: .milliseconds(250)); guard !Task.isCancelled else { return }; await model.run(entry, commands: [LightCommands.color(StationCore.RGBColor(value), channel: channel)]) }
-                    }
+                StationColorPicker(selection: Binding(get: { color }, set: { value in
+                    model.setColor(entry, channel: channel, value: value)
+                }), label: entry.device.hasBackground ? channel.title : "Light")
             } else {
                 VStack(spacing: 7) {
                     HStack { Label("White temperature", systemImage: "thermometer.medium"); Spacer(); Text("\(Int(temperature)) K").monospacedDigit().foregroundStyle(.secondary) }.font(.caption)
-                    Slider(value: $temperature, in: 2700...6500, step: 100, onEditingChanged: { editing in if !editing { send(LightCommands.temperature(Int(temperature), channel: channel)) } }).tint(.orange).accessibilityLabel("Task light temperature")
+                    Slider(value: Binding(get: { temperature }, set: { value in
+                        temperature = value
+                        model.setTemperature(entry, channel: channel, value: Int(value))
+                    }), in: 2700...6500, step: 100, onEditingChanged: { editing in
+                        editingTemperature = editing
+                        if !editing { load() }
+                    })
+                        .tint(.orange).accessibilityLabel("Task light temperature")
                 }
             }
         }.frame(maxWidth: .infinity).onAppear(perform: load)
             .onChange(of: entry.device.properties) { _, _ in load() }
-            .onChange(of: model.transitioning) { _, value in if value { colorTask?.cancel() } }
-            .onDisappear { colorTask?.cancel() }
     }
     private func send(_ command: (String, [JSONValue])) { Task { await model.run(entry, commands: [command]) } }
     private func load() {
-        brightness = LightProperties.number(entry.value("bright", channel: channel), fallback: 50, range: 1...100)
-        temperature = LightProperties.number(entry.value("ct", channel: channel), fallback: 4000, range: 2700...6500)
-        let updated = StationCore.RGBColor(packed: Int(entry.value("rgb", channel: channel) ?? "16777215") ?? 16777215).color
-        if StationCore.RGBColor(updated) != StationCore.RGBColor(color) { color = updated }
+        // The model overlays pending adjustments on read-back. Keep a physical
+        // drag stable even when another channel or a poll publishes new values.
+        if !editingBrightness { brightness = LightProperties.number(entry.value("bright", channel: channel), fallback: 50, range: 1...100) }
+        if !editingTemperature { temperature = LightProperties.number(entry.value("ct", channel: channel), fallback: 4000, range: 2700...6500) }
     }
 }
 
