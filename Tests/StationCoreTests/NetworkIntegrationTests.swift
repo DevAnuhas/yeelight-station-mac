@@ -85,6 +85,34 @@ final class NetworkIntegrationTests: XCTestCase {
         await connection.close()
     }
 
+    func testFreshPropertiesExcludeUnobservedCachedValuesWithoutClearingTheCache() async throws {
+        let server = try TCPProtocolSimulator { fd in
+            for index in 0..<3 {
+                let request = try SimulatorIO.readLine(fd)
+                let keys = try XCTUnwrap(request["params"]?.values)
+                let values = keys.map { key -> JSONValue in
+                    if key == .string("power") { return .string("on") }
+                    if key == .string("bg_bright"), index == 0 { return .string("65") }
+                    return .string("")
+                }
+                try SimulatorIO.send(["id": try XCTUnwrap(request["id"]), "result": .array(values)], fd: fd)
+            }
+        }
+        defer { server.stop() }
+        var seeded = device(port: server.port)
+        seeded.properties = ["bg_bright": "20", "rgb": "123"]
+        let connection = LightConnection(device: seeded, configuration: config())
+        let first = try await connection.properties(includeCached: false)
+        XCTAssertEqual(first, ["power": "on", "bg_bright": "65"])
+        let second = try await connection.properties(includeCached: false)
+        XCTAssertEqual(second, ["power": "on"])
+        let cached = try await connection.properties()
+        XCTAssertEqual(cached["bg_bright"], "65")
+        XCTAssertEqual(cached["rgb"], "123")
+        await connection.close()
+        XCTAssertNil(server.error)
+    }
+
     func testTCPTimeoutAndCancellationAreBounded() async throws {
         let received = expectation(description: "silent peer received request")
         let server = try TCPProtocolSimulator { fd in

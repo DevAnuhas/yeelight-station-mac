@@ -19,7 +19,9 @@ public actor LightConnection {
         try await worker.perform { try $0.request(method: method, params: params, cancellation: $1) }
     }
 
-    public func properties() async throws -> [String: String] {
+    /// Empty protocol values mean unsupported/unavailable. Callers reconciling
+    /// acknowledged edits can request only observations from this reply.
+    public func properties(includeCached: Bool = true) async throws -> [String: String] {
         try await worker.perform { worker, cancellation in
             let keys = ["power", "bright", "ct", "rgb", "hue", "sat", "color_mode", "flowing", "delayoff", "music_on", "name",
                         "bg_power", "bg_bright", "bg_ct", "bg_rgb", "bg_hue", "bg_sat", "bg_color_mode",
@@ -28,12 +30,13 @@ public actor LightConnection {
             guard let values = response.values, values.count == keys.count else {
                 throw StationError.invalidResponse("get_prop returned the wrong number of properties.")
             }
+            var observed: [String: String] = [:]
             for (key, value) in zip(keys, values) {
                 guard let text = value.text else { throw StationError.invalidResponse("get_prop returned a non-scalar property.") }
                 // Unsupported properties are empty strings in the LAN protocol.
-                if !text.isEmpty { worker.cachedProperties[key] = text }
+                if !text.isEmpty { worker.cachedProperties[key] = text; observed[key] = text }
             }
-            return worker.cachedProperties
+            return includeCached ? worker.cachedProperties : observed
         }
     }
 
