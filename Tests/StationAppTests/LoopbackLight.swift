@@ -27,6 +27,11 @@ final class LoopbackLight: @unchecked Sendable {
     private var accepted = 0
     private var active = 0
     private var failure: Error?
+    private let reflectsControls: Bool
+    private let omittedProperties: Set<String>
+    private var currentProperties = properties
+    private var heldRejection: String?
+    private var disconnectHeld = false
 
     static let properties = [
         "power": "on", "bright": "80", "ct": "4000", "rgb": "16777215",
@@ -41,7 +46,9 @@ final class LoopbackLight: @unchecked Sendable {
     var activeConnectionCount: Int { synchronized { active } }
     var error: Error? { synchronized { failure } }
 
-    init(holdFirstMethod: String? = nil) throws {
+    init(holdFirstMethod: String? = nil, reflectsControls: Bool = false, omittedProperties: Set<String> = []) throws {
+        self.reflectsControls = reflectsControls
+        self.omittedProperties = omittedProperties
         methodsToHold = holdFirstMethod.map { [$0] } ?? []
         let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw POSIXError(.ENOTSOCK) }
@@ -71,6 +78,8 @@ final class LoopbackLight: @unchecked Sendable {
     }
 
     func acknowledgeHeldRequest() { synchronized { releaseHeld = true } }
+    func rejectHeldRequest(message: String) { synchronized { heldRejection = message; releaseHeld = true } }
+    func disconnectHeldRequest() { synchronized { disconnectHeld = true } }
     func holdNextRequest(method: String) { synchronized { methodsToHold.append(method) } }
 
     func stop() {
@@ -92,13 +101,21 @@ final class LoopbackLight: @unchecked Sendable {
         }
         do {
             while !synchronized({ stopped }) {
+                if let fd = synchronized({ () -> Int32? in
+                    guard disconnectHeld, let fd = held?.fd else { return nil }
+                    disconnectHeld = false; held = nil; active -= 1
+                    return fd
+                }), let index = peers.firstIndex(where: { $0.fd == fd }) {
+                    peers.remove(at: index); Darwin.close(fd)
+                }
                 if let pending = synchronized({ () -> (fd: Int32, request: [String: JSONValue])? in
                     guard releaseHeld else { return nil }
                     releaseHeld = false
                     defer { held = nil }
                     return held
                 }), peers.contains(where: { $0.fd == pending.fd }) {
-                    try respond(to: pending.request, fd: pending.fd)
+                    let rejection = synchronized { () -> String? in defer { heldRejection = nil }; return heldRejection }
+                    try respond(to: pending.request, fd: pending.fd, rejection: rejection)
                 }
                 var descriptors = [pollfd(fd: listener, events: Int16(POLLIN), revents: 0)]
                 descriptors += peers.map { pollfd(fd: $0.fd, events: Int16(POLLIN), revents: 0) }
@@ -165,21 +182,28 @@ final class LoopbackLight: @unchecked Sendable {
         return true
     }
 
-    private func respond(to request: [String: JSONValue], fd: Int32) throws {
+    private func respond(to request: [String: JSONValue], fd: Int32, rejection: String? = nil) throws {
+        if rejection == nil, reflectsControls, let method = request["method"]?.text,
+           let value = request["params"]?.values?.first?.integer {
+            let prefix = method.hasPrefix("bg_") ? "bg_" : ""
+            if method == prefix + "set_bright" { currentProperties[prefix + "bright"] = String(value) }
+            if method == prefix + "set_ct_abx" { currentProperties[prefix + "ct"] = String(value); currentProperties[prefix + "color_mode"] = "2" }
+            if method == prefix + "set_rgb" { currentProperties[prefix + "rgb"] = String(value); currentProperties[prefix + "color_mode"] = "1" }
+        }
         let values: [JSONValue]
         if request["method"]?.text == "get_prop" {
             guard let keys = request["params"]?.values else { throw POSIXError(.EPROTO) }
             // Preserve exactly the requested count/order and return strings, as firmware does.
             values = try keys.map {
                 guard case .string(let key) = $0 else { throw POSIXError(.EPROTO) }
-                return .string(Self.properties[key] ?? "")
+                return .string(omittedProperties.contains(key) ? "" : currentProperties[key] ?? "")
             }
         } else {
             values = [.string("ok")]
         }
-        var data = try JSONEncoder().encode(JSONValue.object([
-            "id": request["id"]!, "result": .array(values)
-        ]))
+        var response: [String: JSONValue] = ["id": request["id"]!, "result": .array(values)]
+        if let rejection { response = ["id": request["id"]!, "error": .object(["code": .int(-1), "message": .string(rejection)])] }
+        var data = try JSONEncoder().encode(JSONValue.object(response))
         data.append(contentsOf: [13, 10])
         try data.withUnsafeBytes { bytes in
             var offset = 0

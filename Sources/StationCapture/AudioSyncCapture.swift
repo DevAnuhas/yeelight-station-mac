@@ -22,7 +22,7 @@ public final class AudioSyncCapture: ObservableObject {
 
     public init() {}
 
-    public func start(source: AudioSource,
+    public func start(source: AudioSource, displayID: UInt32? = nil,
                       onLevel: @escaping @MainActor @Sendable (Double) -> Void) async throws {
         let token = UUID()
         generation = token
@@ -44,8 +44,17 @@ public final class AudioSyncCapture: ObservableObject {
                 try CapturePermission.requireScreenRecording()
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 try ensureCurrent(token)
-                guard let display = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
-                    ?? content.displays.first else { throw CaptureError.noDisplays }
+                let display: SCDisplay
+                if let displayID {
+                    guard let selected = content.displays.first(where: { $0.displayID == displayID }) else {
+                        throw CaptureError.displayUnavailable(displayID)
+                    }
+                    display = selected
+                } else {
+                    guard let fallback = content.displays.first(where: { $0.displayID == CGMainDisplayID() })
+                        ?? content.displays.first else { throw CaptureError.noDisplays }
+                    display = fallback
+                }
                 let configuration = SCStreamConfiguration()
                 // Only audio is consumed; keep the associated display surface tiny.
                 configuration.width = 2

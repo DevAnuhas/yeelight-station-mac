@@ -11,7 +11,8 @@ final class DeviceEntry: ObservableObject, Identifiable {
     @Published var online = false
     @Published var busy = false
     @Published var error: String?
-    init(_ device: LightDevice) { self.device = device; id = device.id }
+    var confirmedProperties: [String: String]
+    init(_ device: LightDevice) { self.device = device; id = device.id; confirmedProperties = device.properties }
     func value(_ name: String, channel: LightChannel) -> String? { device.properties[channel == .background ? "bg_" + name : name] }
 }
 
@@ -52,13 +53,32 @@ final class StationModel: ObservableObject {
     private var cleanupTask: Task<Void, Never>?
     private var subscriptions = Set<AnyCancellable>()
     private var deviceSubscriptions = Set<AnyCancellable>()
-    private var shuttingDown = false
+    @Published private var shuttingDown = false
     private var controlTask: Task<Void, Never>?
     private var controls: [UUID: Task<Void, Never>] = [:]
+    private var commandDevices = Set<String>()
     private var refreshTasks: [String: Task<Void, Never>] = [:]
+    private let displayProvider: (@MainActor () async throws -> [CaptureDisplay])?
+    private let notificationCenter: NotificationCenter
+    private var displayObserver: NSObjectProtocol?
+    private var displayTask: Task<Void, Never>?
+    private var displayGeneration = 0
+    private var began = false
+    private var activeDisplayID: UInt32?
+    private var startupTask: Task<Void, Never>?
+    private var adjustmentTask: Task<Void, Never>?
+    private var adjustmentQueue: [AdjustmentKey] = []
+    private var queuedAdjustments: [AdjustmentKey: Adjustment] = [:]
+    private var desiredAdjustments: [AdjustmentKey: Adjustment] = [:]
+    private var adjustmentRevision = 0
+    private var propertyRevisions: [AdjustmentKey: Int] = [:]
 
-    init(store: ConfigurationStore = ConfigurationStore(), previewMode: Bool? = nil) {
+    init(store: ConfigurationStore = ConfigurationStore(), previewMode: Bool? = nil,
+         displayProvider: (@MainActor () async throws -> [CaptureDisplay])? = nil,
+         notificationCenter: NotificationCenter = .default) {
         self.store = store
+        self.displayProvider = displayProvider
+        self.notificationCenter = notificationCenter
         preview = previewMode ?? ProcessInfo.processInfo.arguments.contains("--demo")
         do { presets = try StationPresets.load() }
         catch { fatalError("Cannot load bundled Station presets: \(error)") }
@@ -111,21 +131,52 @@ final class StationModel: ObservableObject {
     var outputs: [DeviceAssignment] { devices.compactMap { config.assignments[$0.id] }.filter(\.enabled) }
     var onlineCount: Int { devices.filter(\.online).count }
     var active: Bool { mode != .idle }
+    var isShuttingDown: Bool { shuttingDown }
+    var selectedDisplay: CaptureDisplay? { displays.first { $0.id == config.displayID } }
+    func requiresDisplay(for target: SyncMode) -> Bool { target == .screen || (target == .music && audioSource == .system) }
+    func displayReady(for target: SyncMode, displayID: UInt32? = nil) -> Bool {
+        !requiresDisplay(for: target) || displays.contains { $0.id == (displayID ?? config.displayID) }
+    }
+    func canStart(_ target: SyncMode, displayID: UInt32? = nil) -> Bool {
+        target != .idle && target != mode && !transitioning && !controlling && !scanning && !preview && !shuttingDown && !outputs.isEmpty && displayReady(for: target, displayID: displayID)
+    }
+    @discardableResult func selectDisplay(_ id: UInt32) -> Bool {
+        guard !shuttingDown, displays.contains(where: { $0.id == id }) else { return false }
+        config.displayID = id; save(); return true
+    }
+    func setBrightness(_ entry: DeviceEntry, channel: LightChannel, value: Int) {
+        queueAdjustment(entry, channel: channel, property: "bright", value: min(100, max(1, value)), command: LightCommands.brightness(value, channel: channel))
+    }
+    func setTemperature(_ entry: DeviceEntry, channel: LightChannel, value: Int) {
+        queueAdjustment(entry, channel: channel, property: "ct", value: min(6500, max(1700, value)), command: LightCommands.temperature(value, channel: channel), colorMode: "2")
+    }
+    func setColor(_ entry: DeviceEntry, channel: LightChannel, value: StationCore.RGBColor) {
+        queueAdjustment(entry, channel: channel, property: "rgb", value: value.packed, command: LightCommands.color(value, channel: channel), colorMode: "1")
+    }
     func assignment(for entry: DeviceEntry) -> DeviceAssignment { config.assignments[entry.id] ?? DeviceAssignment(deviceID: entry.id, channel: entry.device.defaultChannel) }
     func updateAssignment(_ entry: DeviceEntry, _ change: (inout DeviceAssignment) -> Void) {
         var value = assignment(for: entry); change(&value); config.assignments[entry.id] = value; save()
     }
     func save() {
         guard !preview, persistenceEnabled else { return }
-        config.devices = devices.map(\.device)
+        config.devices = devices.map { entry in
+            var device = entry.device; device.properties = entry.confirmedProperties; return device
+        }
         do { try store.save(config) } catch { self.error = "Couldn’t save settings: \(error.localizedDescription)" }
     }
     func connection(_ entry: DeviceEntry) -> LightConnection {
         if let value = connections[entry.id] { return value }
-        let value = LightConnection(device: entry.device); connections[entry.id] = value; return value
+        var device = entry.device; device.properties = entry.confirmedProperties
+        let value = LightConnection(device: device); connections[entry.id] = value; return value
     }
     func begin() {
-        guard !preview, pollTask == nil else { return }
+        guard !shuttingDown, !began else { return }
+        began = true
+        displayObserver = notificationCenter.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.loadDisplays() }
+        }
+        displayTask = Task { [weak self] in await self?.loadDisplays() }
+        guard !preview else { return }
         pollTask = Task { [weak self] in
             while !Task.isCancelled {
                 guard let self else { return }
@@ -138,14 +189,15 @@ final class StationModel: ObservableObject {
     func refresh(_ entry: DeviceEntry) async {
         guard !preview, !shuttingDown else { return }
         if let existing = refreshTasks[entry.id] { await existing.value; return }
-        guard !entry.busy else { return }
+        guard !entry.busy, !desiredAdjustments.keys.contains(where: { $0.deviceID == entry.id }) else { return }
         entry.busy = true
         let host = entry.device.host, port = entry.device.port
+        let revision = adjustmentRevision
         let operation = Task { [self] in
             do {
-                let values = try await connection(entry).properties()
+                let values = try await connection(entry).properties(includeCached: false)
                 guard !shuttingDown, !Task.isCancelled, entry.device.host == host, entry.device.port == port else { return }
-                entry.device.properties.merge(values) { _, new in new }; entry.online = true; entry.error = nil
+                mergeProperties(values, into: entry, observedAt: revision); entry.online = true; entry.error = nil
             } catch {
                 guard !shuttingDown, !Task.isCancelled, entry.device.host == host, entry.device.port == port else { return }
                 entry.online = false; entry.error = error.localizedDescription
@@ -153,11 +205,97 @@ final class StationModel: ObservableObject {
         }
         refreshTasks[entry.id] = operation
         await operation.value
-        refreshTasks.removeValue(forKey: entry.id); entry.busy = false
+        refreshTasks.removeValue(forKey: entry.id); entry.busy = commandDevices.contains(entry.id)
+    }
+    private func queueAdjustment(_ entry: DeviceEntry, channel: LightChannel, property: String, value: Int,
+                                 command: (String, [JSONValue]), colorMode: String? = nil) {
+        guard !shuttingDown, devices.contains(where: { $0 === entry }), channel != .background || entry.device.hasBackground else { return }
+        guard !scanning, !transitioning, !controlling, !entry.busy || refreshTasks[entry.id] != nil else {
+            error = "Wait for the current operation to finish before adjusting \(entry.device.displayName)."
+            recomposeProperties(entry); return
+        }
+        if preview { notice = "Preview mode: commands stay on this Mac."; return }
+        let prefix = channel == .background ? "bg_" : ""
+        let key = AdjustmentKey(deviceID: entry.id, property: prefix + property)
+        adjustmentRevision += 1
+        var properties = [key.property: String(value)]
+        if let colorMode { properties[prefix + "color_mode"] = colorMode }
+        let intent = Adjustment(entry: entry, command: command, properties: properties, revision: adjustmentRevision)
+        for name in properties.keys { propertyRevisions[AdjustmentKey(deviceID: entry.id, property: name)] = intent.revision }
+        desiredAdjustments[key] = intent
+        queuedAdjustments[key] = intent
+        adjustmentQueue.removeAll { $0 == key }; adjustmentQueue.append(key)
+        entry.device.properties.merge(properties) { _, new in new }
+        guard adjustmentTask == nil else { return }
+        let previous = controlTask
+        let operation = Task { [self] in
+            await previous?.value
+            while !Task.isCancelled, !shuttingDown, !adjustmentQueue.isEmpty {
+                let key = adjustmentQueue.removeFirst()
+                guard let intent = queuedAdjustments.removeValue(forKey: key) else { continue }
+                await performAdjustment(intent, key: key)
+            }
+            adjustmentTask = nil
+            if controls.isEmpty { controlTask = nil }
+        }
+        adjustmentTask = operation; controlTask = operation
+    }
+    private func performAdjustment(_ intent: Adjustment, key: AdjustmentKey) async {
+        let entry = intent.entry
+        await refreshTasks[entry.id]?.value
+        guard !shuttingDown, !Task.isCancelled, devices.contains(where: { $0 === entry }) else { return }
+        if active { await stopSync(cancelStartup: false) } else { await cleanupTask?.value }
+        guard !shuttingDown, !Task.isCancelled else { return }
+        // A value waiting for polling/cleanup has not entered the transport yet.
+        // Let its newer replacement keep its position among surviving intents.
+        guard desiredAdjustments[key]?.revision == intent.revision else { return }
+        var failure: Error?
+        do {
+            _ = try await connection(entry).request(method: intent.command.0, params: intent.command.1)
+            guard !shuttingDown, !Task.isCancelled else { return }
+            // An ACK confirms the submitted target even if subsequent inspection
+            // fails. A rejected/uncertain command never becomes confirmed state.
+            entry.confirmedProperties.merge(intent.properties) { _, new in new }
+        }
+        catch { failure = error }
+        guard !shuttingDown, !Task.isCancelled else { return }
+        // The in-flight command is immutable. Its read-back must not erase a
+        // newer desired value, even if that value arrived before this query.
+        let revision = adjustmentRevision
+        var readBack: [String: String]?
+        do { readBack = try await connection(entry).properties(includeCached: false) }
+        catch { if failure == nil { failure = error } }
+        guard !shuttingDown, !Task.isCancelled else { return }
+        if desiredAdjustments[key]?.revision == intent.revision { desiredAdjustments.removeValue(forKey: key) }
+        if let readBack { mergeProperties(readBack, into: entry, observedAt: revision); entry.online = true }
+        else { recomposeProperties(entry) }
+        if let failure {
+            entry.error = failure.localizedDescription
+            error = "\(entry.device.displayName): \(failure.localizedDescription)"
+        } else { entry.error = nil }
+        save()
+    }
+    private func mergeProperties(_ values: [String: String], into entry: DeviceEntry, observedAt revision: Int) {
+        let pending = desiredAdjustments.values.filter { $0.entry === entry }
+        let accepted = values.filter { name, _ in
+            let key = AdjustmentKey(deviceID: entry.id, property: name)
+            return (propertyRevisions[key] ?? 0) <= revision && !pending.contains { $0.properties[name] != nil }
+        }
+        entry.confirmedProperties.merge(accepted) { _, new in new }
+        recomposeProperties(entry)
+    }
+    private func recomposeProperties(_ entry: DeviceEntry) {
+        var values = entry.confirmedProperties
+        for intent in desiredAdjustments.values.filter({ $0.entry === entry }).sorted(by: { $0.revision < $1.revision }) {
+            values.merge(intent.properties) { _, new in new }
+        }
+        entry.device.properties = values
     }
     func scan() async {
         guard !preview, !scanning, !controlling, !transitioning, !shuttingDown else { return }
         scanning = true; error = nil; notice = nil; defer { scanning = false }
+        await adjustmentTask?.value
+        guard !shuttingDown else { return }
         do {
             let found = try await YeelightDiscovery.scan(timeout: 3)
             guard !shuttingDown else { return }
@@ -203,7 +341,7 @@ final class StationModel: ObservableObject {
             let d = LightDevice(id: "manual-" + host, name: "", model: model, host: host)
             let probe = LightConnection(device: d)
             let values: [String: String]
-            do { values = try await probe.properties() } catch { await probe.close(); throw error }
+            do { values = try await probe.properties(includeCached: false) } catch { await probe.close(); throw error }
             await probe.close()
             guard !shuttingDown else { return false }
             var verified = d; verified.properties = values
@@ -214,7 +352,10 @@ final class StationModel: ObservableObject {
         } catch { self.error = "Couldn’t reach \(host). \(error.localizedDescription) Check LAN Control and this Mac’s network."; return false }
     }
     func remove(_ entry: DeviceEntry) async {
-        guard !shuttingDown, !controlling else { return }
+        guard !shuttingDown, !controlling, !transitioning else { return }
+        transitioning = true; defer { transitioning = false }
+        await adjustmentTask?.value
+        guard !shuttingDown else { return }
         await stopSync()
         guard !shuttingDown else { return }
         if let conn = connections.removeValue(forKey: entry.id) { await conn.close() }
@@ -223,10 +364,11 @@ final class StationModel: ObservableObject {
     func run(_ entry: DeviceEntry, commands: [(String, [JSONValue])], duringScene: Bool = false) async {
         guard !shuttingDown, !scanning, (!transitioning || duringScene) else { return }
         let refresh = refreshTasks[entry.id]
-        guard !entry.busy || refresh != nil else {
+        guard !commandDevices.contains(entry.id), !entry.busy || refresh != nil else {
             error = "A command for \(entry.device.displayName) is still pending. Try again when it finishes."; return
         }
         if preview { notice = "Preview mode: commands stay on this Mac."; return }
+        commandDevices.insert(entry.id)
         entry.busy = true; controlling = true
         let previous = controlTask
         let operationID = UUID()
@@ -235,7 +377,7 @@ final class StationModel: ObservableObject {
             await refresh?.value
             guard !shuttingDown, !Task.isCancelled else { return }
             entry.busy = true
-            if active { await stopSync() } else { await cleanupTask?.value }
+            if active { await stopSync(cancelStartup: false) } else { await cleanupTask?.value }
             guard !shuttingDown, !Task.isCancelled else { return }
             do {
                 for cmd in commands {
@@ -244,9 +386,9 @@ final class StationModel: ObservableObject {
                 }
                 guard !shuttingDown, !Task.isCancelled else { return }
                 entry.error = nil; entry.online = true
-                let values = try await connection(entry).properties()
+                let values = try await connection(entry).properties(includeCached: false)
                 guard !shuttingDown, !Task.isCancelled else { return }
-                entry.device.properties.merge(values) { _, new in new }; save()
+                mergeProperties(values, into: entry, observedAt: adjustmentRevision); save()
             } catch {
                 if !shuttingDown && !(error is CancellationError) {
                     entry.error = error.localizedDescription
@@ -256,12 +398,15 @@ final class StationModel: ObservableObject {
         }
         controls[operationID] = operation; controlTask = operation
         await operation.value
-        controls.removeValue(forKey: operationID); controlling = !controls.isEmpty; entry.busy = false
+        controls.removeValue(forKey: operationID); commandDevices.remove(entry.id)
+        controlling = !controls.isEmpty; entry.busy = refreshTasks[entry.id] != nil
         if controls.isEmpty { controlTask = nil }
     }
     func apply(_ scene: ScenePreset) async {
         guard !transitioning, !controlling, !scanning, !shuttingDown else { return }
         transitioning = true; defer { transitioning = false }
+        await adjustmentTask?.value
+        guard !shuttingDown else { return }
         await stopSync()
         guard !outputs.isEmpty else { error = "Add a light and enable it in Sync routing first."; return }
         do {
@@ -282,58 +427,113 @@ final class StationModel: ObservableObject {
         guard !trimmed.isEmpty, !outputs.isEmpty, config.savedScenes.count < 256 else { return }
         let actions = outputs.compactMap { a -> SavedLightState? in
             guard let entry = devices.first(where: { $0.id == a.deviceID }) else { return nil }
-            return SavedLightState(deviceID: a.deviceID, channel: a.channel, properties: entry.device.properties)
+            return SavedLightState(deviceID: a.deviceID, channel: a.channel, properties: entry.confirmedProperties)
         }
         config.savedScenes.append(SavedScene(name: String(trimmed.prefix(80)), actions: actions)); save()
     }
     func applySaved(_ scene: SavedScene) async {
         guard !transitioning, !controlling, !scanning, !shuttingDown else { return }
         transitioning = true; defer { transitioning = false }
+        await adjustmentTask?.value
+        guard !shuttingDown else { return }
         await stopSync()
         for state in scene.actions { guard !shuttingDown else { return }; if let entry = devices.first(where: { $0.id == state.deviceID }) { await run(entry, commands: restoreCommands(state), duringScene: true) } }
     }
     func loadDisplays() async {
+        do { try await updateDisplays() }
+        catch { if !shuttingDown && !(error is CancellationError) { self.error = error.localizedDescription } }
+    }
+    private func updateDisplays(stopUnavailableCapture: Bool = true) async throws {
+        guard !shuttingDown else { throw CancellationError() }
+        displayGeneration += 1; let ticket = displayGeneration
+        let available: [CaptureDisplay]
         do {
-            displays = try await screen.availableDisplays()
-            if !displays.contains(where: { $0.id == config.displayID }) { config.displayID = displays.first?.id }
-        } catch { self.error = error.localizedDescription }
+            if let displayProvider { available = try await displayProvider() }
+            else { available = try await screen.availableDisplays() }
+        }
+        catch {
+            if ticket == displayGeneration && !shuttingDown { displays = [] }
+            throw error
+        }
+        guard !shuttingDown, !Task.isCancelled, ticket == displayGeneration else { throw CancellationError() }
+        displays = available
+        if selectedDisplay == nil {
+            let old = config.displayID
+            config.displayID = displays.first?.id
+            if old != config.displayID { save() }
+        }
+        if stopUnavailableCapture, let activeDisplayID, !displays.contains(where: { $0.id == activeDisplayID }) {
+            error = "The display used for sync disconnected. Choose a display and start again."
+            await stopSync()
+        }
     }
     func start(_ target: SyncMode) async {
-        guard !transitioning, !controlling, !scanning, !preview, !shuttingDown else { if preview { notice = "Connect a real light to start live sync." }; return }
-        transitioning = true; defer { transitioning = false }
-        await stopSync()
+        guard target != .idle, target != mode, !transitioning, !controlling, !scanning, !preview, !shuttingDown else {
+            if preview { notice = "Connect a real light to start live sync." }; return
+        }
+        // Freeze user intent before the first suspension. Refresh may reconcile a
+        // stale picker, but this Start must never silently capture its replacement.
+        let displayID = config.displayID, source = audioSource
+        transitioning = true
+        let operation = Task { [self] in await performStart(target, displayID: displayID, source: source) }
+        startupTask = operation
+        await operation.value
+        startupTask = nil; transitioning = false
+    }
+    private func performStart(_ target: SyncMode, displayID: UInt32?, source: AudioSource) async {
         error = nil
+        let needsDisplay = target == .screen || (target == .music && source == .system)
+        func validateDisplay() throws {
+            if needsDisplay && !displays.contains(where: { $0.id == displayID }) {
+                throw StationError.unavailable("Choose an available display before starting sync.")
+            }
+        }
         let assignments = outputs
         guard !assignments.isEmpty else { error = "Add a light and enable it in Sync routing first."; return }
-        generation += 1; let ticket = generation
+        var beganStartup = false
         do {
-            if target == .screen && displays.isEmpty { await loadDisplays() }
-            try ensureCurrent(ticket)
-            if target == .screen && config.displayID == nil { throw StationError.unavailable("Choose a display before starting Color Play.") }
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            try Task.checkCancellation()
+            // A scene or Start is a barrier after all previously accepted edits,
+            // including their read-back. No new edits enter while transitioning.
+            await adjustmentTask?.value
+            try Task.checkCancellation()
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            guard !shuttingDown else { throw CancellationError() }
+            await stopSync(cancelStartup: false)
+            try Task.checkCancellation()
+            guard !shuttingDown else { throw CancellationError() }
+            generation += 1; let ticket = generation
+            activeDisplayID = needsDisplay ? displayID : nil
+            beganStartup = true
             for a in assignments {
-                guard let e = devices.first(where: { $0.id == a.deviceID }) else { continue }
-                let current = try await connection(e).properties()
+                guard let entry = devices.first(where: { $0.id == a.deviceID }) else { continue }
                 try ensureCurrent(ticket)
-                e.device.properties.merge(current) { _, new in new }
+                let revision = adjustmentRevision
+                let current = try await connection(entry).properties(includeCached: false)
+                try ensureCurrent(ticket)
+                mergeProperties(current, into: entry, observedAt: revision)
                 restoreStates.append(SavedLightState(deviceID: a.deviceID, channel: a.channel, properties: current))
                 activeAssignments.append(a)
-                try await connection(e).startRealtime(channel: a.channel)
+                try await connection(entry).startRealtime(channel: a.channel)
                 try ensureCurrent(ticket)
             }
-            if target == .screen, let display = config.displayID {
-                try await screen.start(displayID: display, zones: layout.zones, interval: config.frameInterval) { [weak self] colors in
+            if needsDisplay { try await updateDisplays(stopUnavailableCapture: false); try validateDisplay() }
+            try ensureCurrent(ticket)
+            if target == .screen, let displayID {
+                try await screen.start(displayID: displayID, zones: layout.zones, interval: config.frameInterval) { [weak self] colors in
                     guard let self, self.generation == ticket else { return }; self.colors = colors; self.queueColors(colors)
                 }
             } else {
-                try await audio.start(source: audioSource) { [weak self] level in
+                try await audio.start(source: source, displayID: displayID) { [weak self] level in
                     guard let self, self.generation == ticket else { return }; self.receiveAudio(level)
                 }
             }
             try ensureCurrent(ticket)
             for a in assignments {
-                if let e = devices.first(where: { $0.id == a.deviceID }) {
-                    let c = LightCommands.power(true, channel: a.channel)
-                    _ = try await connection(e).request(method: c.0, params: c.1)
+                if let entry = devices.first(where: { $0.id == a.deviceID }) {
+                    let command = LightCommands.power(true, channel: a.channel)
+                    _ = try await connection(entry).request(method: command.0, params: command.1)
                     try ensureCurrent(ticket)
                 }
             }
@@ -341,13 +541,20 @@ final class StationModel: ObservableObject {
                 throw StationError.unavailable(screen.lastError ?? audio.lastError ?? "Capture stopped before it became ready.")
             }
             mode = target; save()
-        } catch { await stopSync(); if !(error is CancellationError) { self.error = error.localizedDescription } }
+        } catch {
+            if beganStartup { await stopSync(cancelStartup: false) }
+            if !(error is CancellationError) && !shuttingDown { self.error = error.localizedDescription }
+        }
     }
     private func ensureCurrent(_ ticket: Int) throws {
         guard generation == ticket, !shuttingDown, !Task.isCancelled else { throw CancellationError() }
+        if let activeDisplayID, !displays.contains(where: { $0.id == activeDisplayID }) {
+            throw StationError.unavailable("The display used for sync disconnected.")
+        }
     }
-    func stopSync() async {
-        generation += 1; mode = .idle; pendingColors = nil
+    func stopSync(cancelStartup: Bool = true) async {
+        if cancelStartup { startupTask?.cancel() }
+        generation += 1; mode = .idle; pendingColors = nil; activeDisplayID = nil
         let oldTask = outputTask; outputTask = nil; oldTask?.cancel()
         let old = activeAssignments; activeAssignments = []
         let restore = restoreStates; restoreStates = []; audioLevel = 0
@@ -417,9 +624,15 @@ final class StationModel: ObservableObject {
         return result
     }
     func shutdown() async {
-        shuttingDown = true; pollTask?.cancel()
+        shuttingDown = true; pollTask?.cancel(); displayTask?.cancel(); startupTask?.cancel(); adjustmentTask?.cancel()
+        if let displayObserver { notificationCenter.removeObserver(displayObserver); self.displayObserver = nil }
+        adjustmentQueue.removeAll(); queuedAdjustments.removeAll(); desiredAdjustments.removeAll()
+        for entry in devices { recomposeProperties(entry) }
         for operation in controls.values { operation.cancel() }
         for operation in refreshTasks.values { operation.cancel() }
+        await displayTask?.value
+        await startupTask?.value
+        await adjustmentTask?.value
         await pollTask?.value
         for operation in Array(refreshTasks.values) { await operation.value }
         for operation in Array(controls.values) { await operation.value }
