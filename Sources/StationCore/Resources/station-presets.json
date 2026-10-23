@@ -1,0 +1,854 @@
+{
+  "scenes": [
+    {
+      "id": "station-0",
+      "name": "Light on",
+      "powerMode": 2,
+      "brightness": 1,
+      "temperature": 0,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-1",
+      "name": "Light off",
+      "powerMode": 1,
+      "brightness": 1,
+      "temperature": 0,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-2",
+      "name": "Relax",
+      "powerMode": 3,
+      "brightness": 60,
+      "temperature": 4000,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-3",
+      "name": "Working",
+      "powerMode": 3,
+      "brightness": 100,
+      "temperature": 5000,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-4",
+      "name": "Movie",
+      "powerMode": 3,
+      "brightness": 10,
+      "temperature": 3500,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-5",
+      "name": "Night",
+      "powerMode": 3,
+      "brightness": 1,
+      "temperature": 2700,
+      "rgb": 0,
+      "flow": ""
+    },
+    {
+      "id": "station-6",
+      "name": "Gaming",
+      "powerMode": 3,
+      "brightness": 100,
+      "temperature": 0,
+      "rgb": 205,
+      "flow": ""
+    },
+    {
+      "id": "station-7",
+      "name": "Candle light",
+      "powerMode": 3,
+      "brightness": 0,
+      "temperature": 0,
+      "rgb": 0,
+      "flow": "0,0,1500,2,2900,75,1000,2,2700,10,1300,2,3150,100,800,2,2750,20,1400,2,3200,90,950,2,2800,5,1450,2,3000,95,900,2,2850,35"
+    },
+    {
+      "id": "station-8",
+      "name": "Fireworks",
+      "powerMode": 3,
+      "brightness": 0,
+      "temperature": 0,
+      "rgb": 0,
+      "flow": "0,0,1500,1,13439094,75,850,1,13459600,15,1350,1,13721582,80,800,1,13461961,20,1400,1,15610023,90,750,1,11817677,5,1300,1,16711935,100,900,1,15631086,25"
+    },
+    {
+      "id": "station-9",
+      "name": "Party",
+      "powerMode": 3,
+      "brightness": 0,
+      "temperature": 0,
+      "rgb": 0,
+      "flow": "0,0,1650,1,16711680,100,1850,1,16744192,100,1700,1,16776960,100,1850,1,65280,100,1500,1,65535,100,1800,1,255,100,1600,1,16711935,100,1250,1,15610023,100"
+    }
+  ],
+  "palettes": [
+    {
+      "id": "mood-happy",
+      "name": "Happy",
+      "group": "Mood",
+      "colors": [
+        15336574,
+        16746593,
+        16770911,
+        9295954,
+        62975
+      ]
+    },
+    {
+      "id": "mood-surprise",
+      "name": "Surprised",
+      "group": "Mood",
+      "colors": [
+        1656442,
+        2916262,
+        11664889,
+        7864229,
+        431710
+      ]
+    },
+    {
+      "id": "mood-excite",
+      "name": "Excited",
+      "group": "Mood",
+      "colors": [
+        15393463,
+        16564041,
+        16219904,
+        14034984,
+        15193
+      ]
+    },
+    {
+      "id": "mood-romantic",
+      "name": "Romantic",
+      "group": "Mood",
+      "colors": [
+        16760444,
+        16774347,
+        15251711,
+        16748465,
+        14964871
+      ]
+    },
+    {
+      "id": "mood-easy",
+      "name": "Comfortable",
+      "group": "Mood",
+      "colors": [
+        16224854,
+        16503202,
+        8245174,
+        45770,
+        1920649
+      ]
+    },
+    {
+      "id": "mood-happiness",
+      "name": "Joyful",
+      "group": "Mood",
+      "colors": [
+        16771899,
+        51283,
+        38536,
+        4149685,
+        16007990
+      ]
+    },
+    {
+      "id": "mood-warm",
+      "name": "Warm",
+      "group": "Mood",
+      "colors": [
+        16734079,
+        16764370,
+        16765312,
+        16746571,
+        16007990
+      ]
+    },
+    {
+      "id": "mood-calm",
+      "name": "Calm",
+      "group": "Mood",
+      "colors": [
+        11927551,
+        4251647,
+        48127,
+        35020,
+        21930
+      ]
+    },
+    {
+      "id": "mood-quiet",
+      "name": "Tranquil",
+      "group": "Mood",
+      "colors": [
+        1800809,
+        6729558,
+        7319949,
+        16772303,
+        4342338
+      ]
+    },
+    {
+      "id": "scene-islands",
+      "name": "Tropical Island",
+      "group": "Landscape",
+      "colors": [
+        65535,
+        16379674,
+        16747576,
+        9160765,
+        3376720
+      ]
+    },
+    {
+      "id": "scene-Jungle",
+      "name": "Purple Jungle",
+      "group": "Landscape",
+      "colors": [
+        7536755,
+        13706657,
+        16761062,
+        13706657,
+        7536755
+      ]
+    },
+    {
+      "id": "scene-Desert",
+      "name": "Sunset Desert",
+      "group": "Landscape",
+      "colors": [
+        11335167,
+        16773574,
+        16758044,
+        14515011,
+        12007710
+      ]
+    },
+    {
+      "id": "scene-rainforest",
+      "name": "Tropical Rainforest",
+      "group": "Landscape",
+      "colors": [
+        16716947,
+        16766720,
+        3329330,
+        1746804,
+        32118
+      ]
+    },
+    {
+      "id": "scene-HeartoftheOcean",
+      "name": "Heart of the Ocean",
+      "group": "Landscape",
+      "colors": [
+        2003199,
+        49151,
+        8900346,
+        16764879,
+        16738408
+      ]
+    },
+    {
+      "id": "scene-VioletFlowerSea",
+      "name": "Violet Seas",
+      "group": "Landscape",
+      "colors": [
+        16730047,
+        16742352,
+        16754660,
+        12484095,
+        10766847
+      ]
+    },
+    {
+      "id": "scene-BlueGlacier",
+      "name": "Blue Glacier",
+      "group": "Landscape",
+      "colors": [
+        8487121,
+        15125752,
+        10870015,
+        174300,
+        22977
+      ]
+    },
+    {
+      "id": "scene-Sunriseatsea",
+      "name": "Sunrise Sea",
+      "group": "Landscape",
+      "colors": [
+        16766720,
+        16746814,
+        16473158,
+        6108294,
+        2633111
+      ]
+    },
+    {
+      "id": "scene-Green grassland",
+      "name": "Green Meadow",
+      "group": "Landscape",
+      "colors": [
+        41961,
+        11919860,
+        15198796,
+        8628762,
+        2914568
+      ]
+    },
+    {
+      "id": "scene-GoldenForest",
+      "name": "Golden Forest",
+      "group": "Landscape",
+      "colors": [
+        16776960,
+        16766720,
+        16753920,
+        15959552,
+        16729344
+      ]
+    },
+    {
+      "id": "scene-BlueMountainsandRivers",
+      "name": "Blue Mountains",
+      "group": "Landscape",
+      "colors": [
+        458751,
+        11853567,
+        4166399,
+        18095,
+        15576137
+      ]
+    },
+    {
+      "id": "scene-pinkgarden",
+      "name": "Pink Garden",
+      "group": "Landscape",
+      "colors": [
+        65535,
+        12648447,
+        16761035,
+        16738740,
+        16716947
+      ]
+    },
+    {
+      "id": "scene-Volcaniccave",
+      "name": "Volcano Cave",
+      "group": "Landscape",
+      "colors": [
+        9371717,
+        15405344,
+        16745278,
+        15405344,
+        9371717
+      ]
+    },
+    {
+      "id": "scene-Goldenfallenleaves",
+      "name": "Golden Leaves",
+      "group": "Landscape",
+      "colors": [
+        16766720,
+        16747520,
+        16729344,
+        11825456,
+        4819477
+      ]
+    },
+    {
+      "id": "scene-SunsetLake",
+      "name": "Sunset Lake",
+      "group": "Landscape",
+      "colors": [
+        16739904,
+        15428731,
+        16554959,
+        10113507,
+        5394411
+      ]
+    },
+    {
+      "id": "music-classical",
+      "name": "Classical",
+      "group": "Music",
+      "colors": [
+        2508371,
+        2792847,
+        15320170,
+        16032353,
+        15167313
+      ]
+    },
+    {
+      "id": "music-popular",
+      "name": "Pop",
+      "group": "Music",
+      "colors": [
+        16760331,
+        16471559,
+        16711790,
+        8599788,
+        3835647
+      ]
+    },
+    {
+      "id": "music-Rock",
+      "name": "Rock",
+      "group": "Music",
+      "colors": [
+        4473924,
+        14342874,
+        14883354,
+        16307456,
+        10855845
+      ]
+    },
+    {
+      "id": "music-Electronic",
+      "name": "Electronic",
+      "group": "Music",
+      "colors": [
+        1828863,
+        7269251,
+        16774682,
+        14554367,
+        8066303
+      ]
+    },
+    {
+      "id": "music-antiquities",
+      "name": "Antique",
+      "group": "Music",
+      "colors": [
+        12957036,
+        9986620,
+        14407347,
+        15855850,
+        12167298
+      ]
+    },
+    {
+      "id": "music-rap",
+      "name": "Rap",
+      "group": "Music",
+      "colors": [
+        1182922,
+        13107664,
+        16137265,
+        13107664,
+        1182922
+      ]
+    },
+    {
+      "id": "music-jazz",
+      "name": "Jazz",
+      "group": "Music",
+      "colors": [
+        16763904,
+        16768604,
+        16771993,
+        10782421,
+        5517708
+      ]
+    },
+    {
+      "id": "music-Country",
+      "name": "Country",
+      "group": "Music",
+      "colors": [
+        15622229,
+        16751493,
+        16767357,
+        11204227,
+        6345620
+      ]
+    },
+    {
+      "id": "music-Metal",
+      "name": "Metal",
+      "group": "Music",
+      "colors": [
+        5606008,
+        8729874,
+        15641123,
+        6374451,
+        4883276
+      ]
+    },
+    {
+      "id": "music-unique",
+      "name": "Alternative",
+      "group": "Music",
+      "colors": [
+        13379894,
+        16769024,
+        5294023,
+        15066597,
+        16361247
+      ]
+    },
+    {
+      "id": "festival-newyear",
+      "name": "New Year",
+      "group": "Holiday",
+      "colors": [
+        2782298,
+        10098198,
+        13386554,
+        15562564,
+        16760699
+      ]
+    },
+    {
+      "id": "festival-ValentinesDay",
+      "name": "Valentine's Day",
+      "group": "Holiday",
+      "colors": [
+        16770541,
+        16759512,
+        16740771,
+        16724841,
+        16715835
+      ]
+    },
+    {
+      "id": "festival-carnival",
+      "name": "Carnival",
+      "group": "Holiday",
+      "colors": [
+        9912063,
+        16730010,
+        16770641,
+        580283,
+        5073407
+      ]
+    },
+    {
+      "id": "festival-FoolsDay",
+      "name": "April Fool's Day",
+      "group": "Holiday",
+      "colors": [
+        352190,
+        16763405,
+        16728128,
+        16763405,
+        352190
+      ]
+    },
+    {
+      "id": "festival-MothersDay",
+      "name": "Mother's Day",
+      "group": "Holiday",
+      "colors": [
+        3739264,
+        11731038,
+        15269988,
+        16736158,
+        16755884
+      ]
+    },
+    {
+      "id": "festival-FathersDay",
+      "name": "Father's Day",
+      "group": "Holiday",
+      "colors": [
+        361691,
+        7856127,
+        16770984,
+        10213724,
+        39292
+      ]
+    },
+    {
+      "id": "festival-ChildrensDay",
+      "name": "Children's Day",
+      "group": "Holiday",
+      "colors": [
+        11707647,
+        16747951,
+        16765077,
+        11069439,
+        10420148
+      ]
+    },
+    {
+      "id": "festival-Halloween",
+      "name": "Halloween",
+      "group": "Holiday",
+      "colors": [
+        5439637,
+        13439291,
+        16741888,
+        16754944,
+        16775526
+      ]
+    },
+    {
+      "id": "festival-worldcup",
+      "name": "World Cup",
+      "group": "Holiday",
+      "colors": [
+        16775526,
+        14546915,
+        8502407,
+        1664534,
+        21160
+      ]
+    },
+    {
+      "id": "festival-Thanksgiving",
+      "name": "Thanksgiving",
+      "group": "Holiday",
+      "colors": [
+        16765337,
+        16768131,
+        16751201,
+        16737846,
+        16201535
+      ]
+    },
+    {
+      "id": "festival-Christmas",
+      "name": "Christmas",
+      "group": "Holiday",
+      "colors": [
+        16307456,
+        16604755,
+        16383227,
+        11594445,
+        2211699
+      ]
+    }
+  ],
+  "layouts": [
+    {
+      "id": "1",
+      "name": "Four edges",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.4
+        },
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1.0,
+          "height": 0.3
+        },
+        {
+          "x": 0.8,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.4
+        },
+        {
+          "x": 0.0,
+          "y": 0.7,
+          "width": 1.0,
+          "height": 0.3
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "Six zones",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.4
+        },
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.5,
+          "height": 0.3
+        },
+        {
+          "x": 0.5,
+          "y": 0.0,
+          "width": 0.5,
+          "height": 0.3
+        },
+        {
+          "x": 0.8,
+          "y": 0.3,
+          "width": 0.2,
+          "height": 0.4
+        },
+        {
+          "x": 0.5,
+          "y": 0.7,
+          "width": 0.5,
+          "height": 0.3
+        },
+        {
+          "x": 0.0,
+          "y": 0.7,
+          "width": 0.5,
+          "height": 0.3
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "Whole screen",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1.0,
+          "height": 1.0
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "name": "Left / right",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.5,
+          "height": 1.0
+        },
+        {
+          "x": 0.5,
+          "y": 0.0,
+          "width": 0.5,
+          "height": 1.0
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "name": "Three columns",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.25,
+          "y": 0.0,
+          "width": 0.5,
+          "height": 1.0
+        },
+        {
+          "x": 0.75,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "name": "Top / bottom",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 1.0,
+          "height": 0.3
+        },
+        {
+          "x": 0.0,
+          "y": 0.3,
+          "width": 0.5,
+          "height": 0.7
+        },
+        {
+          "x": 0.5,
+          "y": 0.3,
+          "width": 0.5,
+          "height": 0.7
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "name": "Four columns",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.25,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.5,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.75,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "name": "Five zones",
+      "zones": [
+        {
+          "x": 0.0,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.25,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 0.7
+        },
+        {
+          "x": 0.5,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 0.7
+        },
+        {
+          "x": 0.75,
+          "y": 0.0,
+          "width": 0.25,
+          "height": 1.0
+        },
+        {
+          "x": 0.25,
+          "y": 0.7,
+          "width": 0.5,
+          "height": 0.3
+        }
+      ]
+    }
+  ]
+}
