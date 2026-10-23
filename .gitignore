@@ -1,0 +1,10 @@
+.build/
+.swiftpm/
+.tools/
+.analysis/
+/.analysis-*/
+dist/
+.DS_Store
+*.xcuserstate
+xcuserdata/
+__pycache__/
