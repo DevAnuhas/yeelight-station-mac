@@ -1,7 +1,7 @@
 {
   "name": "Yeelight Station",
   "artifact": "Screenshot-led README and social cover",
-  "version": 2,
+  "version": 3,
   "source": "assets/artwork/readme-banner.html",
   "canvas": {
     "width": 2000,
@@ -110,7 +110,7 @@
       "x": 822,
       "y": 55,
       "width": 1110,
-      "height": 890.6361323155216,
+      "height": 889.6946564885496,
       "rotationDegrees": 0,
       "crop": "None; retain the full user-supplied dashboard capture at its original aspect ratio",
       "screenshotOpacity": 1,
@@ -131,15 +131,15 @@
       "path": "assets/screenshots/station.png",
       "providedBy": "User-supplied actual native app screenshot",
       "observedDimensions": {
-        "width": 1179,
-        "height": 946
+        "width": 2358,
+        "height": 1890
       },
-      "sourceStatus": "User-selected replacement dashboard capture; copied byte-for-byte to the canonical source asset.",
+      "sourceStatus": "User-selected current 0.3.1 dashboard capture; copied byte-for-byte to the canonical source asset.",
       "use": "Only interface image used in the README and social covers. Preserve the complete supplied capture.",
       "visuallyInspected": true,
       "editing": "No painting, compositing fake controls, state-text removal, or generative reconstruction",
-      "sourceFilename": "Screenshot 2026-10-24 at 3.27.52 AM.png",
-      "sha256": "7112d30f75543b02ac63fe523eb2d79c0c4e68abbbcdc170c86ddb4592004b70"
+      "sourceFilename": "Screenshot 2026-10-24 at 4.44.39 AM.png",
+      "sha256": "aef5da75343eb855f2baee82026473e1a9ba1faa5d1e519ea197c7809f2d8a06"
     },
     {
       "role": "Inspected supporting actual application screenshot, unused in cover",
@@ -176,13 +176,13 @@
     "sourceImagesInspectedWith": "view_image",
     "layoutReview": "Independent read-only review: use one full straight Station window, omit the secondary inset, preserve native capture details, avoid live-state claims.",
     "renderTool": "T3 html_preview",
-    "renderStatus": "Updated README and social exports checked visually at 1600 × 800 and 1280 × 640 with T3 html_preview. Both source images loaded without console errors; the complete new dashboard fits at its original aspect ratio.",
+    "renderStatus": "Both exports regenerated and visually reviewed from the current 2358 × 1890 user screenshot; images load and console reports no errors.",
     "previewChecks": {
       "width": 1280,
       "contentHeight": 640,
       "capturedHeight": 640,
       "mainScreenshotDisplayWidth": 710.4,
-      "mainScreenshotSourceWidth": 1179,
+      "mainScreenshotSourceWidth": 2358,
       "mainScreenshotUpscaled": false,
       "consoleErrors": 0
     },
@@ -200,6 +200,6 @@
         "height": 640
       }
     ],
-    "rootReview": "Both PNGs rendered with T3 html_preview using the user-selected screenshot copied byte-for-byte. The complete dashboard is visible, including independent light controls. No UI pixels were repainted or cropped."
+    "rootReview": "The full supplied screenshot stays intact and inside the artboard, with the current sidebar wordmark, native navigation, ellipsis-only menu and connected monitor stand. Reviewed the 1280 × 640 cover; the same composition exports at 1600 × 800 without upscaling the screenshot."
   }
 }
