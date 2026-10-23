@@ -15,9 +15,9 @@ This is a working development port, not full Windows feature parity. See [implem
 
 ## Install
 
-Requires **macOS 14 or later**. [Download Yeelight Station 0.3.0 (.dmg)](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.3.0/Yeelight-Station-0.3.0-universal.dmg), open the disk image, and drag **Yeelight Station** onto **Applications**. Eject the disk image and open the app from Applications. Quit an older copy before replacing it; your saved lights and settings stay in Application Support.
+Requires **macOS 14 or later**. [Download Yeelight Station 0.3.1 (.dmg)](https://github.com/DevAnuhas/yeelight-station-mac/releases/download/v0.3.1/Yeelight-Station-0.3.1-universal.dmg), open the disk image, and drag **Yeelight Station** onto **Applications**. Eject the disk image and open the app from Applications. Quit an older copy before replacing it; your saved lights and settings stay in Application Support.
 
-The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes, checksums and an alternate ZIP](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.3.0) describe validation and limits.
+The download supports Apple Silicon and Intel Macs and is Developer ID signed, notarized by Apple, and stapled for offline verification. You do not need Xcode to run it. [Release notes, checksums and an alternate ZIP](https://github.com/DevAnuhas/yeelight-station-mac/releases/tag/v0.3.1) describe validation and limits.
 
 Allow Station in **System Settings → Privacy & Security → Local Network** and permit its LAN traffic in any network filter.
 
@@ -27,7 +27,9 @@ Displays load automatically for Color Play. Its menu-bar Start action offers dis
 
 Use **Automations** for dated or repeating on/off schedules, with a preset or saved current state for turn-on. Each schedule targets a light and channel, and requires Station running with the Mac awake. Missed actions are skipped. A light’s **••• → Device settings** shows reported device details, a sleep timer and supported power-on defaults. Task-light timers run on the light when supported; backlight and fallback timers are labelled **Mac timer**. [Everyday controls and limits](docs/product/everyday-light-controls.md) explain what runs where.
 
-Closing the window leaves Station in the menu bar. Click or right-click its icon for separate task-light/backlight controls, brightness, saved scenes, and sync actions. **Quit** stops capture and releases sessions. The optional restore setting restores static color, brightness and power, not dynamic flows or proprietary effects.
+Station follows macOS light or dark appearance. The sidebar uses the supplied Yeelight wordmark, and the menu-bar **Scenes** submenu offers the built-in presets for compatible light channels.
+
+Closing the window leaves Station in the menu bar. Click or right-click its icon for separate task-light/backlight controls, brightness, built-in and saved scenes, and sync actions. **Quit** stops capture and releases sessions. The optional restore setting restores static color, brightness and power, not dynamic flows or proprietary effects.
 
 <details>
 <summary>See the real Music Flow interface</summary>

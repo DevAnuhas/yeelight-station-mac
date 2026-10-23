@@ -15,6 +15,16 @@ Last updated: 2026-10-24
 - Read-only permission status and recovery links, with optional capture access requested only on Start. No view initialization requests capture or writes lights.
 - Native Automations for dated/recurring channel actions, local backlight/fallback sleep timers, capability-gated device task-light timers, reported device information and per-channel power-on default saving. See [everyday controls](../product/everyday-light-controls.md).
 
+## Branding and quick scenes (0.3.1)
+
+The sidebar uses the supplied Yeelight logo with no extra subtitle and an imagegen-edited white-lettered dark variant. The app now follows macOS appearance; semantic surfaces, the color popover and accent text adapt with it. Both ellipsis menu triggers hide the automatic chevron. The dashboard monitor and sampling-zone preview have connected stands. The menu-bar Scenes submenu lists all ten built-in presets, checks enabled route/channel compatibility again at selection and dispatches through the existing serialized scene controls. Saved scenes remain available without truncation; background polling does not disable compatible choices.
+
+The combined suite executed **247 tests: 245 passed, two opt-in visual fixtures skipped, zero failures**. Both fixtures passed separately, including 34 light/dark control/window captures. The 30 menu tests include stable preset IDs, stale routing, task-light RGB rejection, polling, shutdown and inspection without capture or persistence. The branding test checks both PNG resources and wordmark contrast; the appearance test checks primary/accent text contrast on window/card surfaces in both appearances. A relocated package loads both logos and all presets, and a missing logo bundle fails the self-test explicitly instead of falling back to the checkout.
+
+Live native inspection verified a readable dark sidebar, the supplied wordmark, the connected monitor stand and the plain three-dot light menu opening correctly. Cached offscreen sidebar rows render incorrectly, so they were not treated as proof of production sidebar failure. No scene, timer, default or recording was started during live inspection.
+
+Version 0.3.1 (9) is installed with saved lights, scenes, automations and preferences preserved. Apple accepted app submission `73673857-39ce-433b-90c6-ea226d21d401` and DMG submission `3a722236-815d-4ce6-bd58-2ffe9f5c919f`; the app and image have stapled tickets and passed signature/Gatekeeper checks. Both architecture slices are built; Intel remains cross-built rather than runtime-tested. See [artwork provenance](../runbooks/artwork.md#sidebar-wordmark) and [distribution](../runbooks/distribution.md).
+
 ## Everyday controls (0.3.0)
 
 Automations adds named one-shot, daily, weekday and custom-day channel schedules, with compatible presets or a confirmed static state for turn-on. Device settings provides reported information, a task-light device countdown when advertised, local backlight/fallback countdowns and per-channel default-state saving. Unsupported phone settings remain explicitly managed in the Yeelight app. See [behaviour and limits](../product/everyday-light-controls.md).
