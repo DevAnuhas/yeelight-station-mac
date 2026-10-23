@@ -104,6 +104,7 @@ struct ScreenZonePreview: View {
     let colors: [StationCore.RGBColor]
     var body: some View {
         VStack(spacing: 12) {
+            VStack(spacing: 0) {
             GeometryReader { proxy in
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: 10).fill(.black.opacity(0.5))
@@ -112,15 +113,17 @@ struct ScreenZonePreview: View {
                         ZStack {
                             Rectangle().fill(color.opacity(0.5))
                             Rectangle().strokeBorder(.white.opacity(0.22), lineWidth: 1)
-                            Text("\(index + 1)").font(.system(size: 18, weight: .medium, design: .rounded)).padding(9).background(.black.opacity(0.25), in: Circle())
+                            Text("\(index + 1)").font(.system(size: 18, weight: .medium, design: .rounded)).foregroundStyle(.white).padding(9).background(.black.opacity(0.25), in: Circle())
                         }.frame(width: proxy.size.width * zone.width, height: proxy.size.height * zone.height)
                             .offset(x: proxy.size.width * zone.x, y: proxy.size.height * zone.y)
                     }
                 }.clipShape(RoundedRectangle(cornerRadius: 9))
-            }.frame(width: 420, height: 236).padding(9).background(.white.opacity(0.1), in: RoundedRectangle(cornerRadius: 15))
-            Capsule().fill(.white.opacity(0.2)).frame(width: 88, height: 5)
+            }.frame(width: 420, height: 236).padding(9).background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 15))
+            Rectangle().fill(Color.primary.opacity(0.2)).frame(width: 22, height: 12)
+            Capsule().fill(Color.primary.opacity(0.2)).frame(width: 88, height: 5)
+            }
             Text("\(layout.name) · \(layout.zones.count) sampling zones").font(.caption).foregroundStyle(.secondary)
-        }.padding(24).frame(maxWidth: .infinity).background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 16))
+        }.padding(24).frame(maxWidth: .infinity).background(StationAppearance.subtleBackground, in: RoundedRectangle(cornerRadius: 16))
             .accessibilityElement(children: .ignore).accessibilityLabel("\(layout.name), \(layout.zones.count) color sampling zones")
     }
 }
@@ -138,7 +141,7 @@ struct MusicFlowView: View {
                     }
                 }.frame(height: 155, alignment: .bottom)
                 Text(model.mode == .music ? "Listening to \(model.audioSource == .system ? "system audio" : model.selectedAudioInput?.name ?? "your microphone")" : "Start Music Flow to see your audio level").font(.callout).foregroundStyle(.secondary)
-            }.padding(30).frame(maxWidth: .infinity).background(.white.opacity(0.025), in: RoundedRectangle(cornerRadius: 16))
+            }.padding(30).frame(maxWidth: .infinity).background(StationAppearance.subtleBackground, in: RoundedRectangle(cornerRadius: 16))
             HStack(alignment: .top, spacing: 18) {
                 GroupBox("Sound & color") {
                     VStack(alignment: .leading, spacing: 16) {
@@ -196,7 +199,7 @@ struct SyncRoutingView: View {
             Text("Sync routing").font(.title3.weight(.semibold))
             Text("Choose the lights and screen zones to use. Task lights stay independent from RGB backlights.").font(.callout).foregroundStyle(.secondary)
             if model.devices.isEmpty { EmptyLightsView() } else {
-                VStack(spacing: 15) { ForEach(model.devices) { entry in RoutingRow(entry: entry) } }.padding(18).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                VStack(spacing: 15) { ForEach(model.devices) { entry in RoutingRow(entry: entry) } }.padding(18).background(StationAppearance.cardBackground, in: RoundedRectangle(cornerRadius: 12))
             }
         }.disabled(model.active || model.transitioning)
     }
@@ -236,7 +239,7 @@ struct ScenesView: View {
                     VStack(alignment: .leading, spacing: 4) { Text(scene.name); Text("\(scene.actions.count) light channels").font(.caption).foregroundStyle(.secondary) }
                     Spacer(); Button("Apply") { Task { await model.applySaved(scene) } }
                     Button(role: .destructive) { model.config.savedScenes.removeAll { $0.id == scene.id }; model.save() } label: { Image(systemName: "trash") }.accessibilityLabel("Delete \(scene.name)")
-                }.padding(15).background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 12))
+                }.padding(15).background(StationAppearance.cardBackground, in: RoundedRectangle(cornerRadius: 12))
             }
             SyncRoutingView()
         }.alert("Save current lights", isPresented: $showSave) {

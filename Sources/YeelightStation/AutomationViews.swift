@@ -2,7 +2,7 @@ import AppKit
 import StationCore
 import SwiftUI
 
-private let automationAccent = Color(red: 0.65, green: 0.60, blue: 1.0)
+private let automationAccent = StationAppearance.accent
 private let macScheduleExplanation = "Runs on this Mac. Station must be running, your Mac awake, and the light reachable. Missed actions are skipped. Scheduled actions stop active sync."
 
 enum ScheduleRepeatRule: String, CaseIterable, Identifiable {
@@ -204,7 +204,7 @@ private struct ScheduleRow: View {
                 Button("Edit", action: edit).disabled(model.isShuttingDown)
                 Menu {
                     Button("Delete schedule…", role: .destructive, action: delete).disabled(model.preview || model.isShuttingDown)
-                } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 22)
+                } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).menuIndicator(.hidden).frame(width: 22)
                     .accessibilityLabel("Options for \(schedule.name)")
             }
             HStack(alignment: .firstTextBaseline, spacing: 16) {
@@ -340,7 +340,7 @@ struct ScheduleEditorView: View {
                         .disabled(model.preview || model.isShuttingDown)
                 }
             }.padding(20)
-        }.frame(width: 600, height: 620).background(Color(red: 0.065, green: 0.069, blue: 0.09)).tint(automationAccent)
+        }.frame(width: 600, height: 620).background(StationAppearance.windowBackground).tint(automationAccent)
     }
 
     private var weekdayPicker: some View {
@@ -450,7 +450,7 @@ struct DeviceSettingsView: View {
                         .help("Read the latest reported device properties.")
                 }
             }.padding(20)
-        }.frame(width: 600, height: 580).background(Color(red: 0.065, green: 0.069, blue: 0.09)).tint(automationAccent)
+        }.frame(width: 600, height: 580).background(StationAppearance.windowBackground).tint(automationAccent)
     }
 
     private var information: some View {
@@ -598,8 +598,8 @@ private struct AutomationGroup<Content: View>: View {
 
 private extension View {
     func automationCard() -> some View {
-        background(.white.opacity(0.035), in: RoundedRectangle(cornerRadius: 14))
-            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.065)))
+        background(StationAppearance.cardBackground, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(StationAppearance.cardBorder))
     }
 }
 

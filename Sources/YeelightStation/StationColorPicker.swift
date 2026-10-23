@@ -74,14 +74,14 @@ struct StationColorPicker: View {
                     Text(selection.hex).font(.system(.caption, design: .monospaced)).foregroundStyle(.primary)
                     Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
                 }.padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(.white.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.white.opacity(0.1)))
+                    .background(StationAppearance.cardBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(StationAppearance.cardBorder))
             }.buttonStyle(.plain)
                 .accessibilityLabel("\(label) color")
                 .accessibilityValue(selection.hex)
                 .help("Choose \(label.lowercased()) color")
                 .popover(isPresented: $presented, arrowEdge: .bottom) {
-                    StationColorPopover(selection: $selection, label: label).preferredColorScheme(.dark)
+                    StationColorPopover(selection: $selection, label: label)
                 }
         }
     }
@@ -131,8 +131,8 @@ struct StationColorPopover: View {
                     .focused($hexFocused).onSubmit(applyHex)
                     .accessibilityLabel("Hex color").accessibilityHint("Six hexadecimal digits. Press Return to apply.")
                     .padding(.horizontal, 10).frame(height: 36)
-                    .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(hexError ? Color.orange : .white.opacity(0.12)))
+                    .background(StationAppearance.fieldBackground, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(hexError ? Color.orange : StationAppearance.cardBorder))
                 Button("Apply", action: applyHex).controlSize(.small)
             }
             if hexError {
@@ -147,15 +147,15 @@ struct StationColorPopover: View {
                         Button { select(rgb) } label: {
                             Circle().fill(rgb.color).frame(width: 21, height: 21)
                                 .overlay(Circle().strokeBorder(.black.opacity(0.15)))
-                                .padding(3).overlay(Circle().strokeBorder(selection == rgb ? .white.opacity(0.9) : .clear, lineWidth: 1.5))
+                                .padding(3).overlay(Circle().strokeBorder(selection == rgb ? Color.primary.opacity(0.9) : .clear, lineWidth: 1.5))
                         }.buttonStyle(.plain).help(preset.name)
                             .accessibilityLabel("\(preset.name), \(rgb.hex)")
                             .accessibilityAddTraits(selection == rgb ? .isSelected : [])
                     }
                 }
             }
-        }.padding(18).frame(width: 304).background(Color(red: 0.105, green: 0.108, blue: 0.14))
-            .tint(Color(red: 0.65, green: 0.60, blue: 1))
+        }.padding(18).frame(width: 304).background(StationAppearance.popoverBackground)
+            .tint(StationAppearance.accent)
             .onChange(of: selection) { _, value in
                 if components.rgb != value { components = StationColorComponents(value, preserving: components) }
                 if !hexFocused { hexText = value.hex; hexError = false }

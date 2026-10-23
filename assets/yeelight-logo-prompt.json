@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "asset": "Yeelight original logo with generated dark appearance variant",
+  "created_at": "2026-10-23T23:00:47.114330+00:00",
+  "requested_edit": "Change only the original black YEELIGHT lettering to white while preserving the original red and white emblem, geometry, spacing, alpha transparency, and 327x73 dimensions.",
+  "source": {
+    "path": "/Users/mac/Downloads/yeelight_logo.png",
+    "width": 327,
+    "height": 73,
+    "mode": "RGBA",
+    "sha256": "0e7a4190dd424b1d58993be0d91e63d66f5adc6c93be4506a31ad305dd38ba06",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      3,
+      3,
+      323,
+      71
+    ],
+    "alpha_128_bbox": [
+      3,
+      3,
+      323,
+      71
+    ],
+    "fully_transparent_pixel_count": 15924
+  },
+  "light_asset": {
+    "path": "/Users/mac/.t3/projects/yeelight-station-mac/Sources/YeelightStation/Resources/yeelight-logo-light.png",
+    "width": 327,
+    "height": 73,
+    "mode": "RGBA",
+    "sha256": "0e7a4190dd424b1d58993be0d91e63d66f5adc6c93be4506a31ad305dd38ba06",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      3,
+      3,
+      323,
+      71
+    ],
+    "alpha_128_bbox": [
+      3,
+      3,
+      323,
+      71
+    ],
+    "fully_transparent_pixel_count": 15924,
+    "operation": "Byte-for-byte file copy; original unchanged."
+  },
+  "dark_asset": {
+    "path": "/Users/mac/.t3/projects/yeelight-station-mac/Sources/YeelightStation/Resources/yeelight-logo-dark.png",
+    "width": 327,
+    "height": 73,
+    "mode": "RGBA",
+    "sha256": "5a930192d666a8547be71f678468f44b37f39e0b7ab0276e036b2257f5bb4f6e",
+    "alpha_extrema": [
+      0,
+      255
+    ],
+    "alpha_bbox": [
+      0,
+      1,
+      326,
+      73
+    ],
+    "alpha_128_bbox": [
+      3,
+      3,
+      324,
+      71
+    ],
+    "fully_transparent_pixel_count": 12692,
+    "selected_attempt": 3,
+    "selected_generated_source": {
+      "path": "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-6433cf4f-3b03-45fe-ad05-cdcc2ee218b7.png",
+      "width": 2173,
+      "height": 724,
+      "mode": "RGBA",
+      "sha256": "77e19e7bfa4af7b64f0a6712a3e822bb0f7b26e35bf99d87ffb3b1618e7db5f7",
+      "alpha_extrema": [
+        0,
+        255
+      ],
+      "alpha_bbox": [
+        0,
+        28,
+        2157,
+        678
+      ],
+      "alpha_128_bbox": [
+        19,
+        140,
+        2151,
+        590
+      ],
+      "fully_transparent_pixel_count": 1091742
+    },
+    "technical_export": {
+      "crop_rectangle_left_top_right_bottom": [
+        0,
+        119,
+        2173,
+        604
+      ],
+      "resize": [
+        327,
+        73
+      ],
+      "resampling": "Pillow LANCZOS",
+      "description": "Centered crop of extra vertical alpha padding, then proportional dimension export only. No pixel recoloring, masks, drawing, reconstruction, alpha thresholding, or shape repair."
+    }
+  },
+  "generation": {
+    "mode": "built-in image_gen edit",
+    "tool": "image_gen.imagegen",
+    "fallback_cli_used": false,
+    "tool_provided_model_identifier": null,
+    "attempts": [
+      {
+        "attempt": 1,
+        "exact_prompt_args": {
+          "prompt": "Use case: precise-object-edit.\nAsset type: exact existing Yeelight sidebar logo dark-appearance PNG variant.\nInput image 1 is the EDIT TARGET, a 327 × 73 pixel RGBA logo: red square symbol on the left with its white symbol inside, followed by the black word YEELIGHT on a truly transparent background.\nPrimary request: edit this supplied raster image by changing ONLY the black YEELIGHT wordmark lettering to pure white (#FFFFFF). Preserve the red/white symbol completely unchanged. Preserve every letter shape, stroke, letter spacing, baseline, symbol-to-word spacing, scale, proportions, antialiased edges, layout and composition exactly. Text (verbatim): \"YEELIGHT\". Do not regenerate or redesign the logo.\nOutput geometry: produce a wide 327 × 73 pixel PNG matching the edit target exactly, or, if higher resolution is required, precisely the same 327:73 aspect ratio (4.479452:1). The full logo should occupy the same proportional bounds as in the input, with only its existing tiny transparent margin. Do not place the wide logo inside a square or tall canvas. No extra alpha padding.\nBackground: actual alpha transparency, including all spaces between and inside letters. Preserve the transparent background and existing white portions of the red emblem. No opaque background and no checkerboard painted into the image.\nConstraints: change only black lettering to white; keep red untouched; no new elements, shadow, glow, outline, texture, distortion, added words, rebranding, or layout changes.",
+          "referenced_image_paths": [
+            "/Users/mac/Downloads/yeelight_logo.png"
+          ],
+          "transparent_background": true
+        },
+        "output_source_path": "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-b07f136d-ce4d-45ef-881d-83c604c719a3.png",
+        "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e as /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-b07f136d-ce4d-45ef-881d-83c604c719a3.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+        "selected": false,
+        "assessment": "Not selected: spacing and emblem proportions drifted from the original. Initial raw image display also showed apparent speckling; later alpha-composited inspection showed most of this was not visible in the dimension export."
+      },
+      {
+        "attempt": 2,
+        "exact_prompt_args": {
+          "prompt": "Edit the attached original Yeelight PNG. This is a strict logo color conversion, not a logo redesign. Make the existing black wordmark \"YEELIGHT\" solid pure white. Preserve all existing shapes and their antialiased silhouettes: the original red square and white emblem, the exact glyph outlines, spacing and proportions. Keep the original red flat and identical. Make all letter interiors clean, solid white. Edges must be clean and smooth, with absolutely no speckles, paint spray, distress, grunge, texture, ghosting or halos.\nKeep actual alpha transparency everywhere the input is transparent. No background image, no checkerboard, no shadow. Do not change the lettering font, any symbol or its layout. Output only the same single horizontal logo.\nThe original canvas is 327 pixels wide by 73 pixels high (4.479452:1). Return exactly that canvas size if possible, otherwise a higher resolution at exactly the same 4.479452:1 ratio with the same tiny transparent margins. Do not expand the transparent canvas to a square or 3:1 frame. Keep every logo element at exactly its original relative scale. Only the black text changes to white.",
+          "referenced_image_paths": [
+            "/Users/mac/Downloads/yeelight_logo.png"
+          ],
+          "transparent_background": true
+        },
+        "output_source_path": "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-dd20c54d-600a-4e8d-b341-913c2500869e.png",
+        "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e as /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-dd20c54d-600a-4e8d-b341-913c2500869e.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+        "selected": false,
+        "assessment": "Not selected: spacing and emblem proportions drifted from the original."
+      },
+      {
+        "attempt": 3,
+        "exact_prompt_args": {
+          "prompt": "Precise raster logo edit. Image 1 is the original 327x73 transparent Yeelight logo to edit. Image 2 is ONLY a technical visibility reference: the identical original alpha-composited onto neutral gray and magnified 4x, so you can clearly see the exact glyph shapes. Do not retain the gray background.\nCreate the dark-appearance version of this EXACT logo. Change only the original black YEELIGHT letters to flat solid pure white #FFFFFF. Preserve the exact original flat red square, original white symbol inside it, glyph outlines, spacing, widths, scale, alignment and margins. This is a clean flat corporate logo, with crisp smooth antialiased edges and completely solid letter fills. No decorative treatment, no texture, no splatter, no holes, no speckles, no gray strokes, no outline, no shadow, no bevel, no gradients, no watermark. Do not interpret this as distressed or painted lettering.\nOutput is a true RGBA PNG with alpha transparency. Outside the exact emblem and the exact seven letters, every pixel must be fully transparent, including the gaps and letter counters. Red and white opaque artwork only. The letter interiors are pure opaque white. Preserve transparency rather than making a background.\nCanvas: preferably exactly 327x73 pixels; otherwise same 4.479452:1 wide aspect ratio at higher resolution, with the logo in its original proportional bounds (3-pixel original margin). Avoid extra transparent padding. Return the single exact logo only.",
+          "referenced_image_paths": [
+            "/Users/mac/Downloads/yeelight_logo.png",
+            "/var/folders/jw/81q9b3ms3dggcgw_3z94sjyr0000gn/T/yeelight-logo-inspect-t8n2bnht/original-visible-reference.png"
+          ],
+          "transparent_background": true
+        },
+        "output_source_path": "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-6433cf4f-3b03-45fe-ad05-cdcc2ee218b7.png",
+        "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e as /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-6433cf4f-3b03-45fe-ad05-cdcc2ee218b7.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+        "selected": true,
+        "assessment": "Selected as the closest generated proportions. Output had extra vertical alpha padding; dimension-only crop and resize applied. Small edge and color differences remain."
+      },
+      {
+        "attempt": 4,
+        "exact_prompt_args": {
+          "prompt": "Image 1 is the dark logo edit target. Image 2 is the original source logo, which defines the exact shape and layout. Clean up image 1: remove ALL scattered, speckled, ragged alpha pixels, fuzzy paint artifacts, and stray marks from around and between the letters and around the red square. Restore clean continuous smooth outlines to the seven letters YEELIGHT, matching image 2 glyph outlines exactly but filled pure opaque white. Letter counters/gaps are fully transparent. Preserve the clean white symbol inside the flat red square exactly as in image 2. Restore the exact original solid flat red color from image 2; no red gradient. Everything outside the clean logo silhouette is actual transparent alpha. Absolutely no brush texture, splatter, distress, outline, shadow or extra marks. This is a strict clean flat digital logo, not an illustration. Keep original geometry and spacing. Use the exact original wide 327:73 canvas ratio, ideally 327x73 pixels. Output the cleaned red-and-white logo on true transparency.",
+          "referenced_image_paths": [
+            "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-6433cf4f-3b03-45fe-ad05-cdcc2ee218b7.png",
+            "/Users/mac/Downloads/yeelight_logo.png"
+          ],
+          "transparent_background": true
+        },
+        "output_source_path": "/Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-d542df09-13bc-45e4-887c-bd2cf97b9dc6.png",
+        "output_hint": "Generated images are saved to /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e as /Users/mac/.codex/generated_images/01a16afa-73f5-7780-82ae-f89def29cb5e/exec-d542df09-13bc-45e4-887c-bd2cf97b9dc6.png by default.\nIf you need to use a generated image at another path, copy it and leave the original in place unless the user explicitly asks you to delete it.\nThe generated image is already displayed to the user. There is no need to render it in the final response as a Markdown image or file link.",
+        "selected": false,
+        "assessment": "Not selected: cleanup pass did not improve fidelity over attempt 3."
+      }
+    ]
+  },
+  "technical_visibility_reference": {
+    "path": "/var/folders/jw/81q9b3ms3dggcgw_3z94sjyr0000gn/T/yeelight-logo-inspect-t8n2bnht/original-visible-reference.png",
+    "source": "/Users/mac/Downloads/yeelight_logo.png",
+    "operation": "Inspection/reference-only alpha composite onto neutral RGB 128 gray; nearest-neighbor 4x enlargement. Supplied as a supporting reference on attempt 3. Not used as final artwork.",
+    "dimensions": [
+      1308,
+      292
+    ],
+    "temporary": true
+  },
+  "validation": {
+    "light_byte_identical_to_source": true,
+    "dimensions_match_requested": true,
+    "format": "RGBA PNG",
+    "true_alpha_transparency_confirmed": true,
+    "visual_inspection": "Compared original light and generated dark side by side, at native size and nearest-neighbor 3x, on light and dark backing colors.",
+    "inspection_composite_path": "/var/folders/jw/81q9b3ms3dggcgw_3z94sjyr0000gn/T/yeelight-logo-inspect-t8n2bnht/final-side-by-side.png",
+    "legibility": "YEELIGHT readable at native 327x73 size on a dark background.",
+    "exact_only_black_to_white_edit": false,
+    "known_limitations": [
+      "The built-in generative editor did not preserve the original pixels exactly: small glyph/outline, emblem, and red-color differences remain.",
+      "A faint fringe and low-alpha residual pixels remain around parts of the generated artwork. Fully transparent pixels are present; there is no opaque canvas background.",
+      "The dark alpha>=128 bounding box is [3,3,324,71] versus [3,3,323,71] in the original, confirming slight geometry drift.",
+      "The dark file is the best generated candidate from four edits, not an exact deterministic recolor."
+    ]
+  },
+  "scope": "Only the two requested new PNG resources and this provenance JSON were written in the repository. No code, manifests, docs, Git, release, app, device, or global configuration actions."
+}

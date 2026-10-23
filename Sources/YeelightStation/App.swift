@@ -15,8 +15,10 @@ enum YeelightStationApp {
                     throw StationError.unavailable("The packaged resource bundle is missing.")
                 }
                 let presets = try StationPresets.load()
+                try StationBrand.validateResources()
                 print("Packaged resources: \(resources.path)")
                 print("Loaded \(presets.scenes.count) scenes, \(presets.palettes.count) palettes, \(presets.layouts.count) layouts.")
+                print("Loaded light and dark sidebar logos.")
                 exit(0)
             } catch {
                 FileHandle.standardError.write(Data((error.localizedDescription + "\n").utf8)); exit(1)
@@ -95,7 +97,7 @@ final class StationAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             window.titlebarAppearsTransparent = true
             window.contentMinSize = NSSize(width: 980, height: 700)
             window.contentViewController = NSHostingController(rootView:
-                StationView().environmentObject(model).preferredColorScheme(.dark)
+                StationView().environmentObject(model)
                     .frame(minWidth: 980, minHeight: 700))
             prepare(window, identifier: "station")
             stationWindow = window
@@ -112,7 +114,7 @@ final class StationAppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegat
             window.title = "Station Settings"
             window.contentViewController = NSHostingController(rootView:
                 ScrollView { SettingsView().environmentObject(model).padding(24) }
-                    .frame(width: 560, height: 650).preferredColorScheme(.dark))
+                    .frame(width: 560, height: 650))
             prepare(window, identifier: "station-settings")
             settingsWindow = window
         }

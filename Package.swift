@@ -13,7 +13,7 @@ let package = Package(
     targets: [
         .target(name: "StationCore", resources: [.process("Resources")]),
         .target(name: "StationCapture", dependencies: ["StationCore"]),
-        .executableTarget(name: "YeelightStation", dependencies: ["StationCore", "StationCapture"]),
+        .executableTarget(name: "YeelightStation", dependencies: ["StationCore", "StationCapture"], resources: [.process("Resources")]),
         .executableTarget(name: "StationCLI", dependencies: ["StationCore"]),
         .testTarget(name: "StationCoreTests", dependencies: ["StationCore"]),
         .testTarget(name: "StationCaptureTests", dependencies: ["StationCapture", "StationCore"]),

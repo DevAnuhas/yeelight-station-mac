@@ -54,6 +54,35 @@ final class StationColorPickerTests: XCTestCase {
     }
 }
 
+@MainActor
+final class StationBrandResourceTests: XCTestCase {
+    func testBundledLogosDecodeAndLetteringContrastsInBothAppearances() throws {
+        try StationBrand.validateResources()
+        for scheme: ColorScheme in [.light, .dark] {
+            let image = StationBrand.image(for: scheme)
+            let cgImage = try XCTUnwrap(image.cgImage(forProposedRect: nil, context: nil, hints: nil))
+            let bitmap = NSBitmapImageRep(cgImage: cgImage)
+            XCTAssertEqual(Double(bitmap.pixelsWide) / Double(bitmap.pixelsHigh), 327.0 / 73.0, accuracy: 0.01)
+
+            // Check the lettering separately from the red mark. A dark logo
+            // accidentally reused in dark mode still has a visible red mark.
+            let firstLetterColumn = bitmap.pixelsWide / 4
+            let background = scheme == .dark ? 0.0 : 1.0
+            var contrastingLetterPixels = 0
+            for y in 0..<bitmap.pixelsHigh {
+                for x in firstLetterColumn..<bitmap.pixelsWide {
+                    let color = try XCTUnwrap(bitmap.colorAt(x: x, y: y)?.usingColorSpace(.deviceRGB))
+                    let luminance = 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent
+                    let contrast = abs(luminance - background) * color.alphaComponent
+                    if contrast > 0.45 { contrastingLetterPixels += 1 }
+                }
+            }
+            let letteringArea = (bitmap.pixelsWide - firstLetterColumn) * bitmap.pixelsHigh
+            XCTAssertGreaterThan(contrastingLetterPixels, letteringArea / 20, "The \(scheme) logo lettering must be visible on its sidebar.")
+        }
+    }
+}
+
 /// Opt-in, entirely synthetic visual fixtures. They do not start Station, polling,
 /// capture, discovery, or device commands, and never present a window onscreen.
 @MainActor
@@ -65,53 +94,65 @@ final class StationControlSnapshotTests: XCTestCase {
         let directory = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         _ = NSApplication.shared
+        let previousAppearance = NSApp.appearance
+        defer { NSApp.appearance = previousAppearance }
         let model = StationModel(previewMode: true)
 
-        let picker = NSHostingView(rootView: StationColorPopover(selection: .constant(RGBColor(packed: 0xA699FF)), label: "RGB backlight").preferredColorScheme(.dark))
-        picker.frame = CGRect(origin: .zero, size: picker.fittingSize)
-        try render(picker, to: directory.appendingPathComponent("color-picker.png"))
+        for scheme: ColorScheme in [.light, .dark] {
+            let name = scheme == .dark ? "dark" : "light"
+            let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+            NSApp.appearance = appearance
+            model.mode = .idle
+            model.audioSource = .system
+            model.audioInputs = []
 
-        for size in [CGSize(width: 980, height: 700), CGSize(width: 1160, height: 810)] {
-            for page in StationPage.allCases {
-                let window = NSWindow(contentRect: CGRect(origin: .zero, size: size),
-                                      styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-                                      backing: .buffered, defer: false)
-                window.isReleasedWhenClosed = false
-                window.title = "Synthetic Station fixture"
-                window.titleVisibility = .hidden
-                window.titlebarAppearsTransparent = true
-                window.appearance = NSAppearance(named: .darkAqua)
-                window.contentViewController = NSHostingController(rootView:
-                    StationView(initialPage: page).environmentObject(model).preferredColorScheme(.dark)
-                        .frame(minWidth: 980, minHeight: 700))
-                // Installing a hosting controller can resize a hidden window to
-                // its preferred size. Apply the fixture dimensions afterwards.
-                window.setContentSize(size)
-                window.contentView?.layoutSubtreeIfNeeded()
-                RunLoop.main.run(until: Date().addingTimeInterval(0.05))
-                let view = try XCTUnwrap(window.contentView)
-                XCTAssertEqual(view.bounds.width, size.width, accuracy: 0.5)
-                // The production 700pt SwiftUI minimum sits below the native
-                // toolbar safe area (52pt on this macOS), so its smallest full
-                // content view is taller than a nominal 700pt NSWindow request.
-                let minimumHeight = 700 + view.safeAreaInsets.top + view.safeAreaInsets.bottom
-                XCTAssertEqual(view.bounds.height, max(size.height, minimumHeight), accuracy: 0.5)
-                let filename = "\(page.id.rawValue.replacingOccurrences(of: " ", with: "-").lowercased())-\(Int(size.width)).png"
-                try render(view, to: directory.appendingPathComponent(filename))
-                window.close()
+            let picker = NSHostingView(rootView: StationColorPopover(selection: .constant(RGBColor(packed: 0xA699FF)), label: "RGB backlight").preferredColorScheme(scheme))
+            picker.appearance = appearance
+            picker.frame = CGRect(origin: .zero, size: picker.fittingSize)
+            try render(picker, to: directory.appendingPathComponent("color-picker-\(name).png"))
+
+            for size in [CGSize(width: 980, height: 700), CGSize(width: 1160, height: 810)] {
+                for page in StationPage.allCases {
+                    let filename = "\(page.id.rawValue.replacingOccurrences(of: " ", with: "-").lowercased())-\(name)-\(Int(size.width)).png"
+                    try renderWindow(StationView(initialPage: page).environmentObject(model), size: size,
+                                     scheme: scheme, to: directory.appendingPathComponent(filename))
+                }
             }
-        }
-        model.audioSource = .microphone
-        model.audioInputs = [.init(id: "snapshot-microphone", name: "Studio USB Microphone", isDefault: true)]
-        let microphone = NSHostingView(rootView: StationView(initialPage: .music).environmentObject(model).preferredColorScheme(.dark))
-        microphone.frame = CGRect(x: 0, y: 0, width: 980, height: 700)
-        try render(microphone, to: directory.appendingPathComponent("music-flow-microphone-980.png"))
+            model.audioSource = .microphone
+            model.audioInputs = [.init(id: "snapshot-microphone", name: "Studio USB Microphone", isDefault: true)]
+            try renderWindow(StationView(initialPage: .music).environmentObject(model), size: CGSize(width: 980, height: 700),
+                             scheme: scheme, to: directory.appendingPathComponent("music-flow-microphone-\(name)-980.png"))
 
-        // Setting synthetic presentation state does not start a sync session.
-        model.mode = .screen
-        let active = NSHostingView(rootView: StationView(initialPage: .lights).environmentObject(model).preferredColorScheme(.dark))
-        active.frame = CGRect(x: 0, y: 0, width: 980, height: 700)
-        try render(active, to: directory.appendingPathComponent("my-lights-active-980.png"))
+            // Setting synthetic presentation state does not start a sync session.
+            model.mode = .screen
+            try renderWindow(StationView(initialPage: .lights).environmentObject(model), size: CGSize(width: 980, height: 700),
+                             scheme: scheme, to: directory.appendingPathComponent("my-lights-active-\(name)-980.png"))
+        }
+    }
+
+    private func renderWindow<Content: View>(_ content: Content, size: CGSize, scheme: ColorScheme, to url: URL) throws {
+        let window = NSWindow(contentRect: CGRect(origin: .zero, size: size),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                              backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        window.title = "Synthetic Station fixture"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua)
+        window.contentViewController = NSHostingController(rootView:
+            content.preferredColorScheme(scheme).frame(minWidth: 980, minHeight: 700))
+        // Installing a hosting controller can resize a hidden window to its
+        // preferred size. Apply the fixture dimensions afterwards.
+        window.setContentSize(size)
+        window.contentView?.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        let view = try XCTUnwrap(window.contentView)
+        XCTAssertEqual(view.bounds.width, size.width, accuracy: 0.5)
+        // The production minimum sits below the native toolbar safe area.
+        let minimumHeight = 700 + view.safeAreaInsets.top + view.safeAreaInsets.bottom
+        XCTAssertEqual(view.bounds.height, max(size.height, minimumHeight), accuracy: 0.5)
+        try render(view, to: url)
     }
 
     private func render(_ view: NSView, to url: URL) throws {
