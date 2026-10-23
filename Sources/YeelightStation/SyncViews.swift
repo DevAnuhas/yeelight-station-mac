@@ -223,6 +223,7 @@ struct SettingsView: View {
                 }.font(.callout).padding(.top, 10)
             }
         }
+        .disclosureGroupStyle(FullWidthDisclosureGroupStyle())
         .onAppear(perform: refreshAccess)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in refreshAccess() }
     }
@@ -265,5 +266,35 @@ struct SettingsView: View {
     }
     private func openSettings(_ anchor: String) {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") { NSWorkspace.shared.open(url) }
+    }
+}
+
+private struct FullWidthDisclosureGroupStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation { configuration.isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 12)
+                        .accessibilityHidden(true)
+                    configuration.label
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(configuration.isExpanded ? Text("Expanded") : Text("Collapsed"))
+
+            if configuration.isExpanded {
+                configuration.content.padding(.leading, 18)
+            }
+        }
     }
 }
